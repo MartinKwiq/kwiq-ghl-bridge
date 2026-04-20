@@ -13,14 +13,18 @@ A medida que el cliente conversa, la app:
 
 1. **Extrae datos estructurados** (slot-filling) contra `interview-schema.ts`.
 2. **Persiste** turnos y respuestas en Supabase.
-3. **Genera salidas** en cualquier momento:
+3. **Detecta oportunidades de upsell** (sección `oportunidades_kwiq`) y las
+   expone en el panel admin como badges — web, branding, dominio, hosting,
+   WhatsApp Business API, CRM.
+4. **Genera salidas versionadas** en cualquier momento:
    - `ghl_autoconfig_json`: configuración estructurada lista para que el
      provisioner aplique a la sub-cuenta del cliente (custom fields,
      custom values, pipelines, calendarios, tags, usuarios, servicios,
-     workflows de handoff). Internamente la llamamos así porque mapea 1:1
-     con la API del proveedor.
-   - `conversation_ai_prompt`: system prompt del agente IA que va a atender
-     a los clientes del cliente.
+     workflows de handoff, upsells detectados). Internamente la llamamos
+     así porque mapea 1:1 con la API del proveedor.
+   - `conversation_ai_prompt`: bundle de 3 capas para el agente IA —
+     prompt de comportamiento + custom values referenciados + spec de
+     Knowledge Base. Ver [`docs/PROMPT-GENERATION.md`](./docs/PROMPT-GENERATION.md).
 
 Forma parte del monorepo `kwiq-ghl-bridge`. Corre 100% local y es 100%
 compatible con Vercel + Supabase managed.
@@ -95,12 +99,20 @@ Ver `.env.local.example`. Las mínimas para arrancar:
 | --------------------------------------- | ---------------------------------------------- |
 | `GET  /`                                | Landing con botones "Empezar entrevista" + "Probar demo" |
 | `GET  /demo`                            | Walkthrough client-only sin Gemini ni Supabase |
+| `GET  /e/[slug]`                        | Link corto que manda el admin al cliente       |
 | `GET  /entrevista/nueva`                | Form → crea sesión → redirige al chat          |
-| `GET  /entrevista/[token]`              | UI de chat conversacional                      |
+| `GET  /entrevista/[token]`              | UI de chat conversacional (+ drag-drop assets) |
 | `GET  /entrevista/[token]/outputs`      | Preview, copiar y descargar configuración      |
 | `POST /api/session`                     | Crea sesión (insert + saludo inicial)          |
 | `POST /api/chat`                        | Procesa un turno del usuario                   |
 | `POST /api/outputs`                     | (Re)genera y versiona la configuración         |
+| `POST /api/interview/upload`            | Recibe branding assets (logo, paleta, fuente)  |
+| `GET  /admin/login`                     | Login admin (Supabase Auth, @kwiq.io)          |
+| `GET  /admin/proyectos`                 | Listado de proyectos Kwiq                       |
+| `GET  /admin/proyectos/[slug]`          | Detalle: credenciales, assets, upsells, sesiones |
+| `GET  /admin/snapshots`                 | Snapshots + locations en vivo de la agencia     |
+| `GET  /admin/ajustes`                   | Config no-code (Gemini, PIT GHL, Marketplace)  |
+| `GET  /api/admin/assets/[id]/download`  | Descarga signed-URL de un asset de branding    |
 
 ## Arquitectura
 
@@ -157,12 +169,19 @@ Editá `LLM_PROVIDER` en `.env.local`. El contrato está en `lib/llm/types.ts`
 
 La fuente de verdad está en `lib/interview-schema.ts`:
 
-- 13 secciones (contexto_general, informacion_general, ubicaciones, personal,
-  servicios_productos, calendarios, info_contacto, pipeline, listas_inteligentes,
-  handoff, custom_fields_extra, activos_digitales, agente_ia).
+- 15 secciones: `contexto_general`, **`oportunidades_kwiq`** (detección de
+  upsell), `informacion_general`, **`branding`**, `ubicaciones`, `personal`,
+  `servicios_productos`, `calendarios`, `info_contacto`, `pipeline`,
+  `listas_inteligentes`, `handoff`, `custom_fields_extra`,
+  `activos_digitales`, `agente_ia`.
 - Cada `QuestionDef` declara su `output.target` → `buildGhlAutoConfig` lo
   despacha al bucket correcto del payload final.
 - Secciones `repeatable` producen N registros indexados por `record_index`.
+- Targets soportados hoy: `ghl_custom_field_contact|opportunity`,
+  `ghl_custom_value`, `ghl_calendar`, `ghl_pipeline_stage`, `ghl_user`,
+  `ghl_tag`, `ghl_service_product`, `ghl_workflow_handoff`,
+  `ghl_smart_list`, `digital_asset_credential`, `branding_asset`,
+  `context_note`, `conversation_ai_prompt`, **`upsell_flag`**.
 
 ## Deploy a Vercel
 
@@ -186,6 +205,11 @@ La fuente de verdad está en `lib/interview-schema.ts`:
   se puede auto-provisionar contra el CRM vía API y qué requiere un humano
   (WhatsApp, DNS, 10DLC, OAuth de Google/Meta). Arquitectura del provisioner,
   idempotencia, fases de rollout, roadmap.
+- [`docs/PROMPT-GENERATION.md`](./docs/PROMPT-GENERATION.md) — cómo se
+  construye el bundle de 3 capas (prompt + custom values + knowledge base)
+  para Conversation AI. Dónde cae cada campo de la entrevista.
+- [`DEPLOY.md`](./DEPLOY.md) — checklist para subir a GitHub y Vercel, con
+  todas las variables de entorno.
 
 ## Roadmap
 
@@ -195,16 +219,20 @@ La fuente de verdad está en `lib/interview-schema.ts`:
 | #13  | ✅ Completo | Scaffolding Next.js                                    |
 | #14  | ✅ Completo | Capa LLM (`LLMClient` + `GeminiClient`)                |
 | #15  | ✅ Completo | Migración SQL inicial (sesiones, turnos, outputs)     |
-| #16  | ✅ Completo | MVP chat — sección *Contexto General* (+ todas las demás vía schema) |
-| #17  | ✅ Completo | Generadores de salida (JSON config + prompt IA)       |
+| #16  | ✅ Completo | MVP chat — todas las secciones via schema              |
+| #17  | ✅ Completo | Generadores de salida (JSON config + bundle IA)       |
 | #19  | ✅ Completo | Modo demo client-only (`/demo`)                        |
 | #21  | ✅ Completo | Rebrand a Kwiq (logos, copy, favicon)                 |
-| #20  | 📐 Diseño  | Auto-provisioning — documentado en `docs/PROVISIONING.md`, implementación pendiente en `apps/provisioner` |
-| #18  | ✅ Completo | README + guía de deploy                               |
+| #24  | ✅ Completo | Cifrado AES-256-GCM de credenciales en `kwiq_projects` |
+| #26  | ✅ Completo | Admin UI: listar + crear proyectos Kwiq                |
+| #29  | ✅ Completo | Config no-code vía `kwiq_settings` + `/admin/ajustes`  |
+| #33-38 | ✅ Completo | Branding (schema + storage + uploader + admin)      |
+| #42  | ✅ Completo | Bundle 3 capas para Conversation AI                    |
+| #43-44 | ✅ Completo | Detección + badges de oportunidades Kwiq             |
+| #46  | ✅ Completo | Panel `/admin/snapshots` con auto-discovery vía Agency PIT |
+| #20  | 📐 Diseño  | Provisioner — `docs/PROVISIONING.md`, impl. en `apps/provisioner` |
 |      | ⏳         | Streaming token-a-token (mejora UX, requiere SSE)      |
-|      | ⏳         | Autenticación opcional del cliente vía Supabase Auth   |
-|      | ⏳         | Cifrado de credenciales sensibles con `pgsodium`       |
-|      | ⏳         | Provisioner de GHL que consuma el JSON generado        |
+|      | ⏳         | Provisioner que consuma JSON + bundle                  |
 
 ## Troubleshooting
 

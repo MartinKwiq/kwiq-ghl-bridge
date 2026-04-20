@@ -41,7 +41,8 @@ export type OutputTarget =
   | "digital_asset_credential"
   | "branding_asset" // logo, paleta, tipografía, brandbook → Supabase Storage + tabla branding_assets
   | "context_note" // conocimiento del negocio para el system prompt del agente
-  | "conversation_ai_prompt"; // directamente inyectado al prompt
+  | "conversation_ai_prompt" // directamente inyectado al prompt
+  | "upsell_flag"; // detección de oportunidades Kwiq (web, branding, dominio, hosting…) — la clave es el código del producto
 
 export interface QuestionDef {
   id: string;
@@ -116,6 +117,66 @@ export const INTERVIEW: { version: string; sections: SectionDef[] } = {
         { id: "incentivar_retorno", label: "¿Cómo incentivan a sus clientes a regresar?", type: "text_long", output: { target: "context_note", key: "incentivar_retorno" } },
         { id: "incentivar_referidos", label: "¿Cómo incentivan a sus clientes y empleados a recomendar sus servicios?", type: "text_long", output: { target: "context_note", key: "incentivar_referidos" } },
         { id: "incentivos_partners", label: "¿Sus proveedores y socios tienen incentivo de promover sus servicios? ¿Cuáles?", type: "text_long", output: { target: "context_note", key: "incentivos_partners" } },
+      ],
+    },
+    {
+      id: "oportunidades_kwiq",
+      title: "Oportunidades Kwiq",
+      sourceSheet: "(derivado — detección de upsell)",
+      order: 15,
+      intent:
+        "Detectar qué activos digitales le faltan al cliente para ofrecerlos como servicios adicionales de Kwiq (website, branding, dominio, hosting, línea WhatsApp Business, CRM). Cada pregunta booleana se enruta a `upsell_flag`: si el cliente NO tiene el activo, el generador agrega el código del producto al array `upsells` del autoconfig para que el admin lo vea como badge en /admin/proyectos/[slug].",
+      description:
+        "Antes de configurar GHL queremos entender qué ya tenés y qué podríamos ayudarte a construir. Respondé honestamente — si te falta algo, Kwiq lo puede armar.",
+      questions: [
+        {
+          id: "tiene_website",
+          label: "¿Tenés página web activa?",
+          type: "boolean",
+          output: { target: "upsell_flag", key: "website_build" },
+          guidance:
+            "Si responde que no, ofrece que Kwiq arme una landing o sitio completo. Si dice que sí pero 'está vieja' o 'no me gusta', marcar también como oportunidad de rediseño.",
+        },
+        {
+          id: "tiene_branding",
+          label: "¿Tenés branding definido (logo, paleta de colores, guidelines)?",
+          type: "boolean",
+          output: { target: "upsell_flag", key: "branding_build" },
+          guidance:
+            "Si no tiene branding, Kwiq puede construir identidad visual desde cero (logo + paleta + tipografía + brandbook básico).",
+        },
+        {
+          id: "tiene_dominio",
+          label: "¿Tenés dominio propio (ej. minegocio.com)?",
+          type: "boolean",
+          output: { target: "upsell_flag", key: "domain_purchase" },
+          guidance:
+            "Si no, Kwiq lo puede comprar y administrar. Si tiene pero no recuerda dónde, marcalo también (probable auditoría + migración).",
+        },
+        {
+          id: "tiene_hosting",
+          label: "¿Tenés hosting activo para tu web?",
+          type: "boolean",
+          output: { target: "upsell_flag", key: "hosting_setup" },
+          guidance:
+            "Si no, Kwiq ofrece hosting administrado. Si el sitio va a vivir en GHL, esta bandera también se usa para configurar el dominio dentro de GHL Sites.",
+        },
+        {
+          id: "tiene_whatsapp_business",
+          label: "¿Tenés línea de WhatsApp Business API (no la app gratis)?",
+          type: "boolean",
+          output: { target: "upsell_flag", key: "whatsapp_line" },
+          guidance:
+            "Aclarar: la app de WhatsApp Business normal NO sirve para el agente IA. Necesita WhatsApp Business API (vía Meta + LC Phone o Twilio). Si no la tiene, marcar como upsell crítico.",
+        },
+        {
+          id: "tiene_crm_actual",
+          label: "¿Usás algún CRM hoy (HubSpot, Pipedrive, Salesforce, GHL, otro)?",
+          type: "text_short",
+          output: { target: "upsell_flag", key: "crm_onboarding" },
+          guidance:
+            "Si responde 'no', marcar como upsell (onboarding completo a GHL). Si menciona otro CRM, capturarlo como texto y marcar para evaluar migración de datos.",
+        },
       ],
     },
     {

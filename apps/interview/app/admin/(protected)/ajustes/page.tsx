@@ -2,6 +2,7 @@ import Link from "next/link";
 import { listSettings } from "@/lib/settings";
 import { SettingsEditor } from "@/components/admin/settings-editor";
 import { PasswordChangeCard } from "@/components/admin/password-change-card";
+import { PitDiagnosticsCard } from "@/components/admin/pit-diagnostics-card";
 
 export const dynamic = "force-dynamic";
 
@@ -63,6 +64,12 @@ export default async function SettingsPage() {
           <h2 className="mb-3 font-display text-sm font-semibold uppercase tracking-wide text-kwiq-muted">
             {sectionTitles[section] ?? section}
           </h2>
+          {section === "ghl" && (
+            <>
+              <GhlScopesHint />
+              <PitDiagnosticsCard />
+            </>
+          )}
           <SettingsEditor rows={rows} />
         </section>
       ))}
@@ -72,6 +79,47 @@ export default async function SettingsPage() {
           ← Volver al dashboard
         </Link>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Hint inline al pie del grupo "GoHighLevel" — lista los scopes que necesita
+ * el PIT. Evita que el admin tenga que abrir los docs para saberlo.
+ */
+function GhlScopesHint() {
+  const scopes: Array<{ name: string; uses: string }> = [
+    { name: "snapshots.readonly", uses: "Panel Snapshots · aplicar snapshot" },
+    { name: "locations.readonly", uses: "Panel Snapshots · listar sub-cuentas" },
+    { name: "locations/customValues.readonly/.write", uses: "Conversation AI (capa 2)" },
+    { name: "locations/customFields.readonly/.write", uses: "Campos desde la entrevista" },
+    { name: "locations/tags.readonly/.write", uses: "Tags usados por workflows" },
+  ];
+  return (
+    <div className="mb-3 rounded-xl border border-kwiq-border/60 bg-kwiq-panel/30 p-4 text-xs text-kwiq-muted">
+      <p className="text-kwiq-text">
+        Scopes mínimos a marcar al crear el Agency PIT
+      </p>
+      <ul className="mt-2 space-y-1">
+        {scopes.map((s) => (
+          <li key={s.name} className="flex flex-wrap items-baseline gap-x-2">
+            <code className="font-mono text-[11px] text-kwiq-text">
+              {s.name}
+            </code>
+            <span className="text-kwiq-muted">— {s.uses}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-3 text-kwiq-muted">
+        Si un recurso devuelve 403 pero otros funcionan, casi siempre es un
+        scope que no está grabado en el PIT. <strong>Importante:</strong>{" "}
+        los scopes se graban dentro del token solo al emitirlo — tildar el
+        checkbox en HighLevel y apretar "Save" no alcanza, hay que apretar{" "}
+        <strong>"Regenerate Token"</strong> (o crear una llave nueva desde
+        cero) y pegar el valor nuevo acá abajo. Usá la herramienta de
+        diagnóstico que aparece más abajo para confirmar qué permisos tiene
+        realmente la llave cargada.
+      </p>
     </div>
   );
 }

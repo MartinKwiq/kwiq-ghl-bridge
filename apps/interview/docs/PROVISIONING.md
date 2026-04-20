@@ -92,12 +92,19 @@ Leyenda:
 
 ### 2.6 Conversation AI / Agente IA
 
+El provisioner consume el **bundle de 3 capas** que produce
+`lib/generators/conversation-ai-prompt.ts` — ver
+[`PROMPT-GENERATION.md`](./PROMPT-GENERATION.md) para el detalle.
+
 | Recurso | Estado | Notas |
 |---|---|---|
 | Crear agente IA | ✅ | Endpoints de Conversation AI v2 (bot profile, goals, prompt, tone). |
-| Insertar el prompt del agente | ✅ | Exactamente el output `conversation_ai_prompt` que ya genera `lib/generators/conversation-ai-prompt.ts`. |
+| Cargar capa 1 (prompt) | ✅ | `bundle.prompt` va al campo prompt del Guided Form (≤2000 chars). |
+| Cargar capa 2 (custom values) | ✅ | `ghl_autoconfig.custom_values[]` se crean antes de activar el bot. `bundle.custom_values_referenced` valida que existan todos. |
+| Cargar capa 3 (knowledge base) | ✅ | `bundle.knowledge_base_spec.urls[]` se carga con el crawler, `asset_refs[]` se suben desde Supabase Storage, `manual_faqs[]` como entries. |
+| Setear response style | ✅ | `bundle.response_style` → dropdown Concise/Balanced/Detailed. |
 | Activar el agente sobre conversaciones | ✅ | Toggle por canal (SMS, email, WhatsApp, FB/IG). |
-| Configurar *handoff* a humano | ✅ | Reglas por keyword, horario o sentiment. |
+| Configurar *handoff* a humano | ✅ | `bundle.handoff_phrase` + reglas por keyword, horario o sentiment. |
 | Voice AI (llamadas) | 🟡 | Requiere número de teléfono provisionado primero (ver 2.8). |
 
 ### 2.7 Conversaciones y canales
@@ -138,12 +145,70 @@ Leyenda:
 | Subir credenciales (GA, Pixel, Tag Manager) | ✅ | Custom values o settings del sitio. |
 | Dominios personalizados | 🟡 | La app genera los DNS records (CNAME/A), el cliente los aplica. |
 
+### 2.11 Oportunidades Kwiq (upsell)
+
+La sección `oportunidades_kwiq` de la entrevista detecta activos que el
+cliente **no tiene** y que Kwiq puede venderle (web, branding, dominio,
+hosting, WhatsApp Business API, onboarding CRM). No se auto-provisionan —
+son señales de venta. El provisioner debe:
+
+1. Leer `ghl_autoconfig.upsells: string[]` antes de ejecutar.
+2. Si contiene `whatsapp_line` → **abortar** el paso de activar WhatsApp
+   Channel; dejarlo pendiente hasta que el equipo Kwiq gestione la línea.
+3. Si contiene `domain_purchase` o `hosting_setup` → usar subdominio
+   temporal de Kwiq como fallback para links (ej. `cliente.kwiq.app`).
+4. Registrar cada flag como task en el tablero interno de ops para que
+   alguien del equipo le haga follow-up comercial al cliente.
+
+El panel `/admin/proyectos/[slug]` ya renderiza los upsells como badges
+para que el account manager los vea de un vistazo.
+
 ---
 
 ## 3. Arquitectura recomendada del provisioner
 
+> **Estado actual (MVP, 2026-04):** el provisioner vive **dentro** de
+> `apps/interview` como módulo `lib/provisioner/`. Se migrará a
+> `apps/provisioner` (servicio separado o background function) cuando
+> los runs empiecen a pasar el timeout de Vercel Pro (~60 s) o cuando
+> querramos correr jobs programados en vez de disparar desde el request.
+> Por ahora el entry-point único es `runProvisioner({ project_id, mode })`
+> importable desde `@/lib/provisioner`.
+>
+> Módulo actual:
+>
+> ```
+> apps/interview/lib/provisioner/
+>   index.ts              ← barrel
+>   run.ts                ← orquestador (runProvisioner)
+>   types.ts              ← StepResult / RunStatus / ProvisionInput
+>   location-client.ts    ← fetch wrapper con Agency PIT
+>   idempotency.ts        ← fingerprint + decideAction + upsert
+>   steps/
+>     custom-values.ts    ← ÚNICO step implementado por ahora
+> ```
+>
+> Tablas Supabase (migración `20260419180000_provisioner.sql`):
+> `kwiq_provisioning_runs` + `kwiq_provisioning_resources`. El resto
+> de los steps (tags, custom_fields, pipelines, calendars, users,
+> ai_agent) sigue la misma forma — se van cableando en commits
+> siguientes. El orden canónico (§3.3) no cambia.
+
 ```
-apps/interview                        apps/provisioner (NEW)
+apps/interview                        lib/provisioner (MVP actual)
+──────────────                        ─────────────────────────────
+  entrevista  ──→  derived_outputs   ──→  run.ts  ──→  steps/*  ──→  LC API v2
+   (JSON)          (Supabase)                │                         │
+                                              └─► kwiq_provisioning_runs
+                                              └─► kwiq_provisioning_resources
+                                                  (idempotency store)
+```
+
+<details>
+<summary>Diseño target cuando extraigamos a <code>apps/provisioner</code></summary>
+
+```
+apps/interview                        apps/provisioner (futuro)
 ──────────────                        ──────────────────────
   entrevista  ──→  derived_outputs   ──→  loader  ──→  plan  ──→  apply
    (JSON)          (Supabase)                 │          │          │
@@ -151,6 +216,7 @@ apps/interview                        apps/provisioner (NEW)
                                               │          └─► dry-run UI (diff)
                                               └─► validador de schema
 ```
+</details>
 
 ### 3.1 Tokens y multi-tenant
 
@@ -194,9 +260,15 @@ CREATE TABLE provisioning_resources (
 ```
 
 Reglas:
-- Antes de `POST`, buscar si ya existe un row con mismo `(session_id, resource_kind, localKey)`.
+- Antes de `POST`, buscar si ya existe un row con mismo `(project_id, resource_kind, local_key)`.
   Si existe, usar `PUT`/`PATCH` con `external_id`.
 - `fingerprint = sha256(canonicalize(payload))`. Si cambia, `PATCH`; si no, skip.
+
+> **MVP:** implementado en `lib/provisioner/idempotency.ts`. La tabla
+> efectivamente creada es `kwiq_provisioning_resources` con
+> `UNIQUE (project_id, resource_kind, local_key)` — la clave es por
+> **proyecto**, no por sesión, para que re-correr la entrevista y
+> re-provisionar no duplique recursos.
 
 ### 3.3 Orden de aplicación (grafo de dependencias)
 
@@ -278,17 +350,18 @@ Eso ya es **10× más rápido** que el flujo actual con planilla + manual labor.
 
 ## 5. Roadmap de implementación
 
-| Sprint | Entregable |
-|---|---|
-| **S1** | `apps/provisioner` skeleton: cliente LC v2 con auth PIT, wrapper HTTP con rate-limit, tabla `provisioning_resources`. |
-| **S2** | Provisioners de: tags, custom fields, custom values. Idempotencia end-to-end. Dry-run CLI. |
-| **S3** | Provisioners de: calendars, pipelines, users. |
-| **S4** | Provisioner del AI agent + prompt. |
-| **S5** | Snapshot loader (aplicar snapshot Kwiq base a la sub-cuenta). |
-| **S6** | UI del **commit** dentro de `/entrevista/[token]/outputs` (botón "Aplicar a Kwiq"). |
-| **S7** | Connect wizard: Google Calendar, Gmail/Outlook, Stripe, dominios. |
-| **S8** | WhatsApp playbook (guiado, no API-only) + A2P para clientes US. |
-| **S9** | Migración de PIT → OAuth Marketplace para self-service. |
+| Sprint | Entregable | Estado |
+|---|---|---|
+| **S1** | `lib/provisioner` skeleton: cliente LC v2 con auth PIT, fetch wrapper, tablas `kwiq_provisioning_runs` + `kwiq_provisioning_resources`. | ✅ 2026-04-19 |
+| **S2** | Provisioner de custom values + idempotency end-to-end (fingerprint sha256, create/update/skip). Modo `dry_run` sin writes. | ✅ 2026-04-19 |
+| **S2.5** | Provisioners de: tags, custom fields. Orden §3.3. | ⏳ |
+| **S3** | Provisioners de: calendars, pipelines, users. | ⏳ |
+| **S4** | Provisioner del AI agent + prompt (consume `conversation_ai_bundle` de 3 capas). | ⏳ |
+| **S5** | Snapshot loader (aplicar snapshot Kwiq base a la sub-cuenta). | ⏳ |
+| **S6** | UI del **commit** dentro de `/admin/proyectos/[slug]` (botón "Provisionar en GHL", estados idle/running/done/failed). | 🟡 en curso |
+| **S7** | Connect wizard: Google Calendar, Gmail/Outlook, Stripe, dominios. | ⏳ |
+| **S8** | WhatsApp playbook (guiado, no API-only) + A2P para clientes US. | ⏳ |
+| **S9** | Migración de PIT → OAuth Marketplace para self-service. | ⏳ |
 
 ---
 

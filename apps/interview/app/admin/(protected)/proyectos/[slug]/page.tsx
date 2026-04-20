@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { supabaseAdmin } from "@/lib/supabase/server";
+import {
+  ProvisionPanel,
+  type RunReport,
+} from "@/components/admin/provision-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +47,55 @@ export default async function ProjectDetailPage({ params }: Props) {
     .select("id, kind, original_name, mime_type, size_bytes, uploaded_at")
     .eq("project_id", project.id)
     .order("uploaded_at", { ascending: false });
+
+  // Upsells detectados: tomamos el derived_output `ghl_autoconfig_json` más
+  // reciente de cualquier sesión del proyecto y leemos `content.upsells`.
+  const sessionIds = (sessions ?? []).map((s) => s.id);
+  const upsells: string[] = [];
+  if (sessionIds.length) {
+    const { data: outs } = await sb
+      .from("derived_outputs")
+      .select("content, version, session_id, generated_at")
+      .eq("kind", "ghl_autoconfig_json")
+      .in("session_id", sessionIds)
+      .order("version", { ascending: false })
+      .limit(1);
+    const latest = outs?.[0];
+    const list = (latest?.content as { upsells?: unknown } | null)?.upsells;
+    if (Array.isArray(list)) {
+      for (const u of list) {
+        if (typeof u === "string" && !upsells.includes(u)) upsells.push(u);
+      }
+    }
+  }
+
+  // Historial del provisioner — tomamos hasta las últimas 10 corridas para
+  // mostrar el último RunReport en el panel y contar total.
+  const { data: runs } = await sb
+    .from("kwiq_provisioning_runs")
+    .select(
+      "id, status, step_results, error_message, started_at, finished_at, created_at",
+    )
+    .eq("project_id", project.id)
+    .order("created_at", { ascending: false })
+    .limit(10);
+
+  const latestRun = runs?.[0];
+  const lastRun: RunReport | null = latestRun
+    ? {
+        run_id: latestRun.id as string,
+        status: latestRun.status as RunReport["status"],
+        step_results:
+          (latestRun.step_results as RunReport["step_results"] | null) ?? [],
+        error_message: (latestRun.error_message as string | null) ?? undefined,
+        started_at:
+          (latestRun.started_at as string | null) ??
+          (latestRun.created_at as string),
+        finished_at:
+          (latestRun.finished_at as string | null) ??
+          (latestRun.created_at as string),
+      }
+    : null;
 
   const interviewUrl = `/e/${project.slug}`;
   const hasStoredToken = Boolean(project.ghl_token_enc);
@@ -148,6 +201,36 @@ export default async function ProjectDetailPage({ params }: Props) {
           </Link>
         </div>
       </section>
+
+      <ProvisionPanel
+        slug={project.slug as string}
+        locationReady={Boolean(project.ghl_location_id)}
+        lastRun={lastRun}
+        totalRuns={runs?.length ?? 0}
+      />
+
+      {upsells.length > 0 && (
+        <section className="rounded-2xl border border-kwiq-accent2/40 bg-kwiq-accent2/5 p-6">
+          <div className="mb-3 flex items-baseline justify-between">
+            <h2 className="font-display text-lg font-semibold uppercase tracking-wide text-kwiq-accent2">
+              Oportunidades Kwiq detectadas
+            </h2>
+            <span className="text-xs text-kwiq-muted">
+              {upsells.length} oportunidad(es)
+            </span>
+          </div>
+          <p className="mb-4 text-sm text-kwiq-muted">
+            Durante la entrevista el cliente mencionó que le faltan estos
+            activos. Considera proponerlos como servicios adicionales antes
+            de arrancar con la configuración.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {upsells.map((u) => (
+              <UpsellBadge key={u} code={u} />
+            ))}
+          </div>
+        </section>
+      )}
 
       <section>
         <div className="mb-3 flex items-baseline justify-between">
@@ -416,4 +499,63 @@ function formatBytesAdmin(n: number): string {
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
   return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+/**
+ * Diccionario de códigos de upsell → etiqueta humana + descripción corta.
+ * Los códigos los define `lib/interview-schema.ts` en la sección
+ * `oportunidades_kwiq`. Si agregás un nuevo upsell al schema, agregalo también
+ * acá para que renderice bonito (si no, caemos a un fallback genérico).
+ */
+const UPSELL_CATALOG: Record<
+  string,
+  { label: string; description: string; icon: string }
+> = {
+  website_build: {
+    label: "Página web",
+    description: "Kwiq puede construir landing o sitio completo.",
+    icon: "🌐",
+  },
+  branding_build: {
+    label: "Branding",
+    description: "Logo + paleta + tipografía + brandbook básico.",
+    icon: "🎨",
+  },
+  domain_purchase: {
+    label: "Dominio",
+    description: "Compra y administración del dominio propio.",
+    icon: "🔗",
+  },
+  hosting_setup: {
+    label: "Hosting",
+    description: "Hosting administrado o integración con GHL Sites.",
+    icon: "📦",
+  },
+  whatsapp_line: {
+    label: "WhatsApp Business API",
+    description: "Provisión de línea oficial para el agente IA.",
+    icon: "💬",
+  },
+  crm_onboarding: {
+    label: "Onboarding CRM",
+    description: "Setup completo de GHL + migración si aplica.",
+    icon: "🗂️",
+  },
+};
+
+function UpsellBadge({ code }: { code: string }) {
+  const entry = UPSELL_CATALOG[code] ?? {
+    label: code,
+    description: "Oportunidad detectada durante la entrevista.",
+    icon: "✨",
+  };
+  return (
+    <span
+      title={entry.description}
+      className="inline-flex items-center gap-2 rounded-full border border-kwiq-accent2/40 bg-kwiq-accent2/10 px-3 py-1 text-xs font-medium text-kwiq-accent2"
+    >
+      <span aria-hidden>{entry.icon}</span>
+      {entry.label}
+    </span>
+  );
 }

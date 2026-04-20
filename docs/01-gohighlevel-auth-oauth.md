@@ -5,7 +5,7 @@
 | Mecanismo | Cuándo usarlo | Notas |
 |---|---|---|
 | **API Key v1** | Solo integraciones heredadas con API v1 | Una key por Location. **No recomendado** para nuevo desarrollo. |
-| **Private Integration Token (PIT)** | Integración **interna** de una sola Agency/Location, sin distribución a terceros | Similar a un token de servicio; creado desde el panel de GHL. No requiere flujo OAuth. |
+| **Private Integration Token (PIT)** | Integración **interna** de una sola Agency/Location, sin distribución a terceros | Similar a un token de servicio; creado desde el panel de GHL. No requiere flujo OAuth. Máx. **5 PITs por nivel** (Agency y Location). HighLevel recomienda **rotarlos cada 90 días** — durante la rotación hay una ventana de 7 días en que el token viejo y el nuevo funcionan en paralelo. |
 | **OAuth 2.0 v2** | Apps del **Marketplace**, multi-tenant, distribuidas a muchas Agencies/Locations | **Estándar para kwiq-ghl-bridge**. |
 
 ## Flujo OAuth 2.0 (authorization code)
@@ -135,6 +135,29 @@ Scopes comunes para un middleware tipo bridge:
 > ⚠️ La lista canónica vive en [marketplace.gohighlevel.com/docs/Authorization/Scopes](https://marketplace.gohighlevel.com/docs/Authorization/Scopes/index.html). Añadir scopes a una app existente requiere republicar la app y **reautorización del usuario**.
 
 **Regla**: pedir solo los scopes mínimos; extender después.
+
+### Scopes mínimos para el PIT de Agencia de Kwiq
+
+El panel `/admin/snapshots` y el futuro `apps/provisioner` de `kwiq-ghl-bridge`
+usan un **único Agency PIT** para todo. Al crearlo en HighLevel **Settings →
+Private Integrations** hay que marcar al menos estos scopes. El panel detecta
+401/403 por recurso y te dice cuál prender, pero la lista canónica es:
+
+| Scope | Lo usa |
+|---|---|
+| `snapshots.readonly` | `/admin/snapshots` (listado) + provisioner (aplicar snapshot a sub-cuenta) |
+| `locations.readonly` | `/admin/snapshots` (listado de sub-cuentas) + provisioner (resolver `locationId`) |
+| `locations.write` | Provisioner, si creamos sub-cuentas nuevas en vez de configurar existentes |
+| `locations/customValues.readonly` + `.write` | Provisioner — custom values de la capa 2 de Conversation AI |
+| `locations/customFields.readonly` + `.write` | Provisioner — custom fields mapeados desde la entrevista |
+| `locations/tags.readonly` + `.write` | Provisioner — tags que usan los workflows |
+| `oauth.readonly` + `oauth.write` | Solo si implementamos el swap Agency PIT → Location token (no hace falta con PIT puro) |
+
+> Si un recurso devuelve **403 "The token does not have access to this company"**
+> pero otros endpoints funcionan, casi siempre es un scope faltante en el PIT:
+> los PITs heredan solo los checkboxes marcados al crearlos, no rotan scopes
+> automáticamente. Regenerá el PIT, marcá el scope, y actualizalo en
+> `/admin/ajustes`.
 
 ## Ejemplo end-to-end en Node/TypeScript (Vercel API Route)
 

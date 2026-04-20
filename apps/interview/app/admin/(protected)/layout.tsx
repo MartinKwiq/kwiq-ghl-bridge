@@ -63,6 +63,12 @@ export default async function AdminProtectedLayout({
               Proyectos
             </Link>
             <Link
+              href="/admin/snapshots"
+              className="text-kwiq-muted hover:text-kwiq-text"
+            >
+              Snapshots
+            </Link>
+            <Link
               href="/admin/ajustes"
               className="text-kwiq-muted hover:text-kwiq-text"
             >

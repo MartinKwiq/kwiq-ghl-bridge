@@ -23,21 +23,9 @@ Todo lo demás (PIT de GHL, API key de Gemini, Marketplace, etc.) se carga desde
 
 ## 2. GitHub
 
-```bash
-cd /ruta/al/monorepo/kwiq-ghl-bridge
-git init
-git add .
-git commit -m "Kwiq Interview — initial working app"
-gh repo create kwiq-ghl-bridge --private --source=. --push
-```
-
-O si ya tenés el repo creado:
-
-```bash
-git remote add origin git@github.com:<tu-usuario>/kwiq-ghl-bridge.git
-git branch -M main
-git push -u origin main
-```
+El repo ya está inicializado localmente (commit `04e2e58` en `main`). Para
+publicarlo seguí la guía [`/PUSH-TO-GITHUB.md`](../../PUSH-TO-GITHUB.md) —
+son 2-3 comandos.
 
 > ⚠ `.env.local` está en `.gitignore` — **no se sube**. Bien.
 

@@ -1,16 +1,29 @@
 import { supabaseAdmin } from "../supabase/server";
-import { buildConversationAIPrompt } from "./conversation-ai-prompt";
+import {
+  buildConversationAIBundle,
+  buildConversationAIPrompt,
+  type ConversationAIBundle,
+} from "./conversation-ai-prompt";
 import { buildGhlAutoConfig, type AnswerRow, type GhlAutoConfig } from "./ghl-autoconfig";
 
-export { buildGhlAutoConfig, buildConversationAIPrompt };
-export type { GhlAutoConfig };
+export { buildGhlAutoConfig, buildConversationAIPrompt, buildConversationAIBundle };
+export type { GhlAutoConfig, ConversationAIBundle };
 
 /**
  * Genera ambos outputs y los persiste en `derived_outputs`.
- * Devuelve el payload completo para mostrar al usuario.
+ *
+ * `conversation_ai_prompt` ahora guarda el BUNDLE completo (3 capas) en el JSON
+ * `content`. El campo `content.prompt` sigue siendo el string puro de la capa 3
+ * para que cualquier cliente legacy que lea `content.prompt` siga funcionando.
+ * Los campos adicionales (`response_style`, `knowledge_base_spec`, etc.) los
+ * consume el agente de provisioning y la UI `/admin/proyectos/[slug]`.
+ *
+ * Ver docs/ghl/conversation-ai.md para el razonamiento de las 3 capas.
  */
 export async function generateAndPersistOutputs(sessionToken: string): Promise<{
   ghl_autoconfig: GhlAutoConfig;
+  conversation_ai_bundle: ConversationAIBundle;
+  /** @deprecated — usar `conversation_ai_bundle.prompt`. Se mantiene para compat. */
   conversation_ai_prompt: string;
 }> {
   const sb = supabaseAdmin();
@@ -39,7 +52,7 @@ export async function generateAndPersistOutputs(sessionToken: string): Promise<{
     name: session.company_name,
     email: session.owner_email,
   });
-  const prompt = buildConversationAIPrompt(ghlAutoconfig);
+  const bundle = buildConversationAIBundle(ghlAutoconfig);
 
   // Persistencia: nuevo registro por versión.
   const nextVersion = await getNextVersion(session.id, "ghl_autoconfig_json");
@@ -55,12 +68,17 @@ export async function generateAndPersistOutputs(sessionToken: string): Promise<{
       session_id: session.id,
       kind: "conversation_ai_prompt",
       version: nextVersion,
-      content: { prompt } as unknown as object,
-      checksum: simpleHash(prompt),
+      // Guardamos el bundle completo. `content.prompt` sigue siendo el string.
+      content: bundle as unknown as object,
+      checksum: simpleHash(bundle.prompt),
     },
   ]);
 
-  return { ghl_autoconfig: ghlAutoconfig, conversation_ai_prompt: prompt };
+  return {
+    ghl_autoconfig: ghlAutoconfig,
+    conversation_ai_bundle: bundle,
+    conversation_ai_prompt: bundle.prompt,
+  };
 }
 
 async function getNextVersion(sessionId: string, kind: string): Promise<number> {

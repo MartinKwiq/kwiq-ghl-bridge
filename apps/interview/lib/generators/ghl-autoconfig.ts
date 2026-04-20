@@ -40,6 +40,14 @@ export interface GhlAutoConfig {
   handoff_rules: Array<Record<string, unknown>>;
   digital_assets: Array<{ platform: string; url?: string; credentials_ref?: string; raw: Record<string, unknown> }>;
   context_notes: Record<string, unknown>;
+  /**
+   * Oportunidades de upsell detectadas durante la entrevista.
+   * Cada entry es el `key` declarado en el schema (website_build, branding_build,
+   * domain_purchase, hosting_setup, whatsapp_line, crm_onboarding…). Solo se agrega
+   * si el cliente respondió "no tengo" a la pregunta `upsell_flag`. El panel
+   * /admin/proyectos/[slug] renderiza estos como badges "Oportunidad: …".
+   */
+  upsells: string[];
   raw_answers: Array<{ section_id: string; question_id: string; record_index: number; value: unknown; confidence: number }>;
 }
 
@@ -89,6 +97,7 @@ export function buildGhlAutoConfig(
     handoff_rules: [],
     digital_assets: [],
     context_notes: {},
+    upsells: [],
     raw_answers: answers.map((a) => ({
       section_id: a.section_id,
       question_id: a.question_id,
@@ -227,6 +236,16 @@ function dispatchAnswer(
       (out.context_notes as Record<string, unknown>)[`ai_${key}`] = value;
       break;
     }
+    case "upsell_flag": {
+      const key = q.output.key ?? q.id;
+      // Guardamos la respuesta cruda como contexto (útil para el prompt).
+      (out.context_notes as Record<string, unknown>)[`upsell_${key}`] = value;
+      // Si la respuesta indica ausencia del activo, marcamos la oportunidad.
+      if (isNegativeAnswer(value)) {
+        if (!out.upsells.includes(key)) out.upsells.push(key);
+      }
+      break;
+    }
   }
 
   // Promociones especiales si el target "context_note" trae datos de empresa.
@@ -243,6 +262,28 @@ function dispatchAnswer(
 function str(v: unknown): string | null {
   if (v === null || v === undefined) return null;
   return typeof v === "string" ? v : String(v);
+}
+
+/**
+ * Devuelve true si la respuesta indica "no tengo eso" — para el dispatcher de
+ * `upsell_flag`. Acepta booleans, y strings típicos en español/inglés:
+ *   false, "false", "no", "nope", "aún no", "todavía no", "ninguno", "nada",
+ *   "no tengo", "no cuento con", "none", "n/a", "na", "".
+ *
+ * Es deliberadamente generoso: es mejor marcar un upsell de más que de menos,
+ * ya que el admin siempre puede ignorar un badge que no aplica.
+ */
+function isNegativeAnswer(v: unknown): boolean {
+  if (v === false) return true;
+  if (v === null || v === undefined) return true;
+  if (typeof v !== "string") return false;
+  const s = v.trim().toLowerCase();
+  if (s === "") return true;
+  if (["false", "0", "n/a", "na", "none", "ninguno", "ninguna", "nada"].includes(s)) return true;
+  // Frases típicas de negación en entrevistas.
+  if (/^(no|nope|nah)\b/.test(s)) return true;
+  if (/\b(a[úu]n no|todav[íi]a no|no tengo|no cuento con|no usamos?|sin\b)/.test(s)) return true;
+  return false;
 }
 
 /** Mapea el `FieldType` del schema al `dataType` que espera la API de GHL. */
