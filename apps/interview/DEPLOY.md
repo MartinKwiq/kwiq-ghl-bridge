@@ -76,6 +76,40 @@ Vercel redeploya automáticamente en cada push a `main`. El primer deploy tarda 
 Después del primer deploy, entrá a Supabase dashboard → **Authentication → URL Configuration**:
 
 - **Site URL**: `https://interview.kwiq.io` (o el dominio Vercel `.vercel.app` mientras tanto).
-- **Redirect URLs**: agregar `https://interview.kwiq.io/admin/login`.
+- **Redirect URLs**: agregar las dos rutas de aceptación de invite + los dos logins:
+  - `https://interview.kwiq.io/admin/login`
+  - `https://interview.kwiq.io/admin/accept-invite`
+  - `https://interview.kwiq.io/interview/login`
+  - `https://interview.kwiq.io/interview/accept-invite`
 
-Eso es todo. El resto lo hacés desde el panel admin.
+> Sin estos redirect URLs Supabase va a rechazar los magic links de invitación.
+
+## 5. Flow cliente — checklist post-deploy
+
+Una vez deployado:
+
+1. Entrá a `/admin/ajustes/usuarios` como owner.
+2. Invitá un cliente: email + nombre + proyecto al que pertenece.
+3. Supabase le manda un mail con un link → aterriza en `/interview/accept-invite`.
+4. El cliente setea contraseña → redirect a `/interview` (landing con CTA nueva entrevista + lista de sus sesiones).
+5. Desde ahí el cliente puede iniciar entrevistas linkeadas a SU proyecto (`user_id` + `project_id` poblados automáticamente).
+
+> El flow anónimo legacy (`/entrevista/nueva`) sigue funcionando — ambos caminos conviven.
+
+## 6. Deploy rápido (CLI)
+
+Si preferís no esperar el auto-deploy de Vercel/GitHub y hacerlo desde tu máquina:
+
+```bash
+cd apps/interview
+npx vercel@latest deploy --prod
+```
+
+El CLI te va a preguntar:
+- "Set up and deploy?" → `Y`
+- "Which scope?" → tu team de Vercel
+- "Link to existing project?" → `N` (primera vez)
+- "Project name" → `kwiq-interview` (o lo que prefieras)
+- "In which directory is your code located?" → `./`
+
+Después del primer run se guarda un `.vercel/project.json` local y los siguientes deploys son un solo comando.
