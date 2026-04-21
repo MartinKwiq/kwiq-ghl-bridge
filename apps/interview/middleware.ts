@@ -10,9 +10,12 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
  *  1. Rehidratar la sesión de Supabase (cookies) — requisito del SSR.
  *  2. Proteger `/admin/*`: si no hay sesión → `/admin/login`.
  *     Si hay sesión pero el email no es @kwiq.io → `/admin/login?error=domain`.
+ *  3. Proteger `/interview/*` (excepto `/interview/login` y
+ *     `/interview/accept-invite`): si no hay sesión → `/interview/login`.
  *
- * La verificación de "es admin de verdad" (está en kwiq_admins) se hace en
- * cada Server Component (más barato que en Edge, donde no hay service_role).
+ * La verificación de "es admin de verdad" (está en kwiq_admins) o "es cliente
+ * invitado" (está en kwiq_interview_users) se hace en cada Server Component
+ * (más barato que en Edge, donde no hay service_role).
  */
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next({ request: req });
@@ -79,6 +82,27 @@ export async function middleware(req: NextRequest) {
   // Si ya logueado y va a /admin/login, redirect al dashboard.
   if (isLoginPage && user && user.email?.toLowerCase().endsWith("@kwiq.io")) {
     return NextResponse.redirect(new URL("/admin", req.url));
+  }
+
+  // ---- Flow cliente /interview/* ----
+  const isInterviewRoute = pathname.startsWith("/interview");
+  const isClientLoginPage = pathname === "/interview/login";
+  const isAcceptInvitePage = pathname === "/interview/accept-invite";
+  const isPublicInterviewRoute = isClientLoginPage || isAcceptInvitePage;
+
+  if (isInterviewRoute && !isPublicInterviewRoute) {
+    if (!user) {
+      const loginUrl = new URL("/interview/login", req.url);
+      loginUrl.searchParams.set("next", pathname);
+      return NextResponse.redirect(loginUrl);
+    }
+    // No chequeamos kwiq_interview_users acá (requiere service_role). Lo hace
+    // el Server Component en /interview/page.tsx y los endpoints API.
+  }
+
+  // Si ya logueado y va a /interview/login, mandamos a la landing cliente.
+  if (isClientLoginPage && user) {
+    return NextResponse.redirect(new URL("/interview", req.url));
   }
 
   return res;
