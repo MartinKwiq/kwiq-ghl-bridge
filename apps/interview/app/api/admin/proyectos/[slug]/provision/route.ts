@@ -17,8 +17,9 @@
  */
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { supabaseServer, supabaseAdmin } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabase/server";
 import { runProvisioner } from "@/lib/provisioner";
+import { requireAdminRole, type KwiqAdminRole } from "@/lib/admin-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,42 +32,24 @@ const BodySchema = z.object({
   mode: z.enum(["dry_run", "apply"]),
 });
 
-type AdminGate =
-  | { ok: true; userId: string }
-  | { ok: false; response: NextResponse };
-
-async function requireAdmin(): Promise<AdminGate> {
-  const sb = await supabaseServer();
-  const { data: auth } = await sb.auth.getUser();
-  if (!auth?.user) {
-    return {
-      ok: false,
-      response: NextResponse.json(
-        { error: "not_authenticated" },
-        { status: 401 },
-      ),
-    };
-  }
-  const admin = supabaseAdmin();
-  const { data: adminRow } = await admin
-    .from("kwiq_admins")
-    .select("user_id")
-    .eq("user_id", auth.user.id)
-    .maybeSingle();
-  if (!adminRow) {
-    return {
-      ok: false,
-      response: NextResponse.json({ error: "not_admin" }, { status: 403 }),
-    };
-  }
-  return { ok: true, userId: auth.user.id };
-}
-
 type RouteParams = { params: Promise<{ slug: string }> };
 
+// Quién puede hacer qué con el provisioner:
+//  - POST (correr provisioner): owner, admin, operator
+//    El operator es justamente el rol pensado para "ejecutor" — corre runs
+//    sobre proyectos que ya configuró el equipo, sin poder editar settings
+//    ni crear proyectos.
+//  - GET (ver historial): owner, admin, operator
+const ALLOWED_ROLES: KwiqAdminRole[] = ["owner", "admin", "operator"];
+
 export async function POST(req: Request, { params }: RouteParams) {
-  const gate = await requireAdmin();
-  if (!gate.ok) return gate.response;
+  const me = await requireAdminRole(ALLOWED_ROLES);
+  if (!me.ok) {
+    return NextResponse.json(
+      { error: me.error, message: me.message },
+      { status: me.status },
+    );
+  }
 
   const { slug } = await params;
 
@@ -104,7 +87,7 @@ export async function POST(req: Request, { params }: RouteParams) {
     const report = await runProvisioner({
       project_id: project.id as string,
       mode: body.mode,
-      triggered_by: gate.userId,
+      triggered_by: me.userId,
     });
     return NextResponse.json({ ok: true, report });
   } catch (err) {
@@ -123,8 +106,13 @@ export async function POST(req: Request, { params }: RouteParams) {
 }
 
 export async function GET(_req: Request, { params }: RouteParams) {
-  const gate = await requireAdmin();
-  if (!gate.ok) return gate.response;
+  const me = await requireAdminRole(ALLOWED_ROLES);
+  if (!me.ok) {
+    return NextResponse.json(
+      { error: me.error, message: me.message },
+      { status: me.status },
+    );
+  }
 
   const { slug } = await params;
 

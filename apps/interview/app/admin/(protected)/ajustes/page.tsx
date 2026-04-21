@@ -3,6 +3,8 @@ import { listSettings } from "@/lib/settings";
 import { SettingsEditor } from "@/components/admin/settings-editor";
 import { PasswordChangeCard } from "@/components/admin/password-change-card";
 import { PitDiagnosticsCard } from "@/components/admin/pit-diagnostics-card";
+import { UsersManagementCard } from "@/components/admin/users-management-card";
+import { getCurrentAdmin, adminCapabilities } from "@/lib/admin-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +24,8 @@ export const dynamic = "force-dynamic";
  */
 export default async function SettingsPage() {
   const settings = await listSettings();
+  const me = await getCurrentAdmin();
+  const caps = me.ok ? adminCapabilities(me.role) : null;
 
   // Agrupamos por "sección" derivando del prefijo de la key.
   const groups: Record<string, typeof settings> = {};
@@ -37,6 +41,10 @@ export default async function SettingsPage() {
     otros: "Otros",
   };
 
+  // Los operators no ven settings globales (son secretos). Si no es owner/admin
+  // filtramos las secciones sensibles.
+  const canSeeSettings = caps?.canEditProjects ?? false;
+
   return (
     <div className="flex flex-col gap-8">
       <section>
@@ -49,6 +57,15 @@ export default async function SettingsPage() {
         <p className="mt-2 max-w-2xl text-sm text-kwiq-muted">
           Todo se guarda cifrado en tu base de datos. No hace falta tocar
           código ni variables de entorno.
+          {me.ok && (
+            <>
+              {" "}Estás logueado como <strong>{me.email}</strong> con rol{" "}
+              <code className="rounded border border-kwiq-border bg-kwiq-bg/60 px-1.5 py-0.5 font-mono text-xs uppercase">
+                {me.role}
+              </code>
+              .
+            </>
+          )}
         </p>
       </section>
 
@@ -59,20 +76,39 @@ export default async function SettingsPage() {
         <PasswordChangeCard />
       </section>
 
-      {Object.entries(groups).map(([section, rows]) => (
-        <section key={section}>
+      {/* Gestión de usuarios — visible para owner y admin. */}
+      {caps?.canManageClients && (
+        <section>
           <h2 className="mb-3 font-display text-sm font-semibold uppercase tracking-wide text-kwiq-muted">
-            {sectionTitles[section] ?? section}
+            Usuarios
           </h2>
-          {section === "ghl" && (
-            <>
-              <GhlScopesHint />
-              <PitDiagnosticsCard />
-            </>
-          )}
-          <SettingsEditor rows={rows} />
+          <UsersManagementCard />
         </section>
-      ))}
+      )}
+
+      {canSeeSettings &&
+        Object.entries(groups).map(([section, rows]) => (
+          <section key={section}>
+            <h2 className="mb-3 font-display text-sm font-semibold uppercase tracking-wide text-kwiq-muted">
+              {sectionTitles[section] ?? section}
+            </h2>
+            {section === "ghl" && (
+              <>
+                <GhlScopesHint />
+                <PitDiagnosticsCard />
+              </>
+            )}
+            <SettingsEditor rows={rows} />
+          </section>
+        ))}
+
+      {!canSeeSettings && me.ok && (
+        <section className="rounded-xl border border-kwiq-border bg-kwiq-panel/40 p-5 text-sm text-kwiq-muted">
+          Tu rol (<code className="font-mono">{me.role}</code>) no incluye
+          acceso a los ajustes globales (GHL, LLM, App). Si necesitás
+          modificarlos, pedíle a un owner o admin.
+        </section>
+      )}
 
       <div className="text-xs text-kwiq-muted">
         <Link href="/admin" className="hover:text-kwiq-text">

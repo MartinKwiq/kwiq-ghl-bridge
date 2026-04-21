@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { supabaseServer, supabaseAdmin } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabase/server";
 import { encryptSecret } from "@/lib/crypto";
+import { requireAdminRole } from "@/lib/admin-auth";
 
 export const runtime = "nodejs"; // node:crypto needed for AES-256-GCM
 export const dynamic = "force-dynamic";
@@ -43,28 +44,20 @@ function blank(v: unknown): string | null {
 /**
  * POST /api/admin/proyectos
  *
- * Crea un proyecto Kwiq en `kwiq_projects`. Requiere admin logueado y en
- * allowlist. Si el `auth_mode` es `pit_location`, cifra el PIT con AES-256-GCM
- * antes de guardarlo.
+ * Crea un proyecto Kwiq en `kwiq_projects`. Requiere owner o admin
+ * (operator no puede crear proyectos). Si el `auth_mode` es `pit_location`,
+ * cifra el PIT con AES-256-GCM antes de guardarlo.
  */
 export async function POST(req: Request) {
-  // 1) sesión admin
-  const sb = await supabaseServer();
-  const { data: auth } = await sb.auth.getUser();
-  if (!auth?.user) {
-    return NextResponse.json({ error: "not_authenticated" }, { status: 401 });
+  // 1) sesión + rol (owner o admin — operator solo puede ejecutar, no crear)
+  const me = await requireAdminRole(["owner", "admin"]);
+  if (!me.ok) {
+    return NextResponse.json(
+      { error: me.error, message: me.message },
+      { status: me.status },
+    );
   }
-
   const admin = supabaseAdmin();
-  const { data: adminRow } = await admin
-    .from("kwiq_admins")
-    .select("user_id")
-    .eq("user_id", auth.user.id)
-    .maybeSingle();
-
-  if (!adminRow) {
-    return NextResponse.json({ error: "not_admin" }, { status: 403 });
-  }
 
   // 2) body
   let parsed;
@@ -135,7 +128,7 @@ export async function POST(req: Request) {
       ghl_company_id: companyId,
       ghl_token_enc: tokenEnc,
       notes,
-      created_by: auth.user.id,
+      created_by: me.userId,
     })
     .select("id, slug, status, auth_mode, created_at")
     .single();
@@ -159,24 +152,19 @@ export async function POST(req: Request) {
 /**
  * GET /api/admin/proyectos — listado simple para fetch del lado cliente.
  * La mayoría de las vistas hacen query directa en RSC; esto es opcional.
+ *
+ * Visible para los 3 roles (owner / admin / operator). Operator necesita
+ * ver el listado para poder ejecutar tareas sobre los proyectos asignados.
  */
 export async function GET() {
-  const sb = await supabaseServer();
-  const { data: auth } = await sb.auth.getUser();
-  if (!auth?.user) {
-    return NextResponse.json({ error: "not_authenticated" }, { status: 401 });
+  const me = await requireAdminRole(["owner", "admin", "operator"]);
+  if (!me.ok) {
+    return NextResponse.json(
+      { error: me.error, message: me.message },
+      { status: me.status },
+    );
   }
-
   const admin = supabaseAdmin();
-  const { data: adminRow } = await admin
-    .from("kwiq_admins")
-    .select("user_id")
-    .eq("user_id", auth.user.id)
-    .maybeSingle();
-
-  if (!adminRow) {
-    return NextResponse.json({ error: "not_admin" }, { status: 403 });
-  }
 
   const { data: projects, error } = await admin
     .from("kwiq_projects")

@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { supabaseServer, supabaseAdmin } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabase/server";
+import { requireAdminRole } from "@/lib/admin-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -7,7 +8,10 @@ export const dynamic = "force-dynamic";
 /**
  * DELETE /api/admin/assets/[id]
  *
- * Borra el asset (fila + binario en Storage). Solo admins autenticados.
+ * Borra el asset (fila + binario en Storage). owner y admin pueden borrar.
+ * El operator puede ver/descargar (otra ruta) pero no puede borrar — los
+ * assets son material del cliente y conviene tener un audit-trail acotado
+ * a quien además podría editar el proyecto.
  */
 export async function DELETE(
   _req: NextRequest,
@@ -18,22 +22,14 @@ export async function DELETE(
     return NextResponse.json({ error: "invalid_id" }, { status: 400 });
   }
 
-  const sb = await supabaseServer();
-  const { data: auth } = await sb.auth.getUser();
-  if (!auth?.user) {
-    return NextResponse.json({ error: "not_authenticated" }, { status: 401 });
+  const me = await requireAdminRole(["owner", "admin"]);
+  if (!me.ok) {
+    return NextResponse.json(
+      { error: me.error, message: me.message },
+      { status: me.status },
+    );
   }
-
   const admin = supabaseAdmin();
-  const { data: adminRow } = await admin
-    .from("kwiq_admins")
-    .select("user_id")
-    .eq("user_id", auth.user.id)
-    .maybeSingle();
-
-  if (!adminRow) {
-    return NextResponse.json({ error: "not_admin" }, { status: 403 });
-  }
 
   const { data: asset } = await admin
     .from("branding_assets")

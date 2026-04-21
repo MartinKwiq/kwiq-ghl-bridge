@@ -16,10 +16,10 @@
  * Nunca devolvemos el PIT en claro ni a la respuesta ni a logs — solo
  * metadata derivada.
  *
- * Auth: requiere admin logueado y en `kwiq_admins`.
+ * Auth: requiere owner o admin (no operator — no ve settings globales).
  */
 import { NextResponse } from "next/server";
-import { supabaseServer, supabaseAdmin } from "@/lib/supabase/server";
+import { requireAdminRole } from "@/lib/admin-auth";
 import { getAgencyContext } from "@/lib/ghl/agency-client";
 
 export const runtime = "nodejs";
@@ -193,19 +193,12 @@ async function probe(
 // ---------- Handler ----------
 
 export async function GET() {
-  const sb = await supabaseServer();
-  const { data: auth } = await sb.auth.getUser();
-  if (!auth?.user) {
-    return NextResponse.json({ error: "not_authenticated" }, { status: 401 });
-  }
-  const admin = supabaseAdmin();
-  const { data: adminRow } = await admin
-    .from("kwiq_admins")
-    .select("user_id")
-    .eq("user_id", auth.user.id)
-    .maybeSingle();
-  if (!adminRow) {
-    return NextResponse.json({ error: "not_admin" }, { status: 403 });
+  const me = await requireAdminRole(["owner", "admin"]);
+  if (!me.ok) {
+    return NextResponse.json(
+      { error: me.error, message: me.message },
+      { status: me.status },
+    );
   }
 
   const ctxRes = await getAgencyContext();

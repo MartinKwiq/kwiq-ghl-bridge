@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { supabaseServer, supabaseAdmin } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabase/server";
+import { requireAdminRole } from "@/lib/admin-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,21 +18,15 @@ const BodySchema = z.object({
  * no depende de que la sesión client-side esté refrescada.
  */
 export async function POST(req: Request) {
-  const sb = await supabaseServer();
-  const { data: auth } = await sb.auth.getUser();
-  if (!auth?.user) {
-    return NextResponse.json({ error: "not_authenticated" }, { status: 401 });
+  // Cualquier miembro del equipo Kwiq puede cambiar su propia contraseña.
+  const me = await requireAdminRole(["owner", "admin", "operator"]);
+  if (!me.ok) {
+    return NextResponse.json(
+      { error: me.error, message: me.message },
+      { status: me.status },
+    );
   }
-
   const admin = supabaseAdmin();
-  const { data: adminRow } = await admin
-    .from("kwiq_admins")
-    .select("user_id")
-    .eq("user_id", auth.user.id)
-    .maybeSingle();
-  if (!adminRow) {
-    return NextResponse.json({ error: "not_admin" }, { status: 403 });
-  }
 
   let parsed;
   try {
@@ -49,7 +44,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const { error: upErr } = await admin.auth.admin.updateUserById(auth.user.id, {
+  const { error: upErr } = await admin.auth.admin.updateUserById(me.userId, {
     password: parsed.password,
   });
 

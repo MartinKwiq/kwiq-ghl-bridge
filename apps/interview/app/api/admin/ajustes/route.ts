@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { supabaseServer, supabaseAdmin } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabase/server";
 import { setSetting } from "@/lib/settings";
 import { decryptSecret, maskSecretTail } from "@/lib/crypto";
+import { requireAdminRole } from "@/lib/admin-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,21 +24,16 @@ const BodySchema = z.object({
  * Devuelve el resumen (nunca el valor en claro si es secreto).
  */
 export async function POST(req: Request) {
-  const sb = await supabaseServer();
-  const { data: auth } = await sb.auth.getUser();
-  if (!auth?.user) {
-    return NextResponse.json({ error: "not_authenticated" }, { status: 401 });
+  // Ajustes globales (PIT, API keys, encryption key) son secretos del sistema:
+  // solo el rol `owner` puede tocarlos.
+  const me = await requireAdminRole(["owner"]);
+  if (!me.ok) {
+    return NextResponse.json(
+      { error: me.error, message: me.message },
+      { status: me.status },
+    );
   }
-
   const admin = supabaseAdmin();
-  const { data: adminRow } = await admin
-    .from("kwiq_admins")
-    .select("user_id")
-    .eq("user_id", auth.user.id)
-    .maybeSingle();
-  if (!adminRow) {
-    return NextResponse.json({ error: "not_admin" }, { status: 403 });
-  }
 
   let parsed;
   try {
@@ -55,7 +51,7 @@ export async function POST(req: Request) {
   const valueOrNull = parsed.value == null ? null : parsed.value;
 
   try {
-    await setSetting(parsed.key, valueOrNull, { userId: auth.user.id });
+    await setSetting(parsed.key, valueOrNull, { userId: me.userId });
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("[admin/ajustes] set error", err);

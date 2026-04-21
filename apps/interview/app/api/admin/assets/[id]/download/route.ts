@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { supabaseServer, supabaseAdmin } from "@/lib/supabase/server";
+import { supabaseAdmin } from "@/lib/supabase/server";
+import { requireAdminRole } from "@/lib/admin-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,7 +11,8 @@ const SIGNED_URL_TTL_SECONDS = 60 * 10; // 10 minutos
  * GET /api/admin/assets/[id]/download
  *
  * Devuelve una URL firmada de Supabase Storage para descargar el asset.
- * Solo admins autenticados (@kwiq.io) pueden pedirla.
+ * Accesible para los 3 roles (owner / admin / operator) — el operator
+ * necesita poder bajar los assets para terminar de configurar el proyecto.
  */
 export async function GET(
   _req: NextRequest,
@@ -21,23 +23,14 @@ export async function GET(
     return NextResponse.json({ error: "invalid_id" }, { status: 400 });
   }
 
-  // Auth admin
-  const sb = await supabaseServer();
-  const { data: auth } = await sb.auth.getUser();
-  if (!auth?.user) {
-    return NextResponse.json({ error: "not_authenticated" }, { status: 401 });
+  const me = await requireAdminRole(["owner", "admin", "operator"]);
+  if (!me.ok) {
+    return NextResponse.json(
+      { error: me.error, message: me.message },
+      { status: me.status },
+    );
   }
-
   const admin = supabaseAdmin();
-  const { data: adminRow } = await admin
-    .from("kwiq_admins")
-    .select("user_id")
-    .eq("user_id", auth.user.id)
-    .maybeSingle();
-
-  if (!adminRow) {
-    return NextResponse.json({ error: "not_admin" }, { status: 403 });
-  }
 
   // Lookup del asset
   const { data: asset, error: assetErr } = await admin
