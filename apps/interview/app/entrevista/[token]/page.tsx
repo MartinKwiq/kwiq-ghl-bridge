@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
-import { Chat } from "@/components/chat";
-import { getSectionById } from "@/lib/interview-schema";
+import { Chat, type ChatSection } from "@/components/chat";
+import { getSectionById, sectionOrder } from "@/lib/interview-schema";
 import { supabaseAdmin } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -15,14 +15,36 @@ export default async function InterviewPage({
 
   const { data: session } = await sb
     .from("interview_sessions")
-    .select("id, session_token, current_section_id, status")
+    .select(
+      "id, session_token, current_section_id, status, completed_section_ids",
+    )
     .eq("session_token", token)
     .single();
 
   if (!session) notFound();
 
+  // Auto-resume: si la sesión estaba pausada y el cliente llegó al chat,
+  // la reactivamos antes de renderizar. No bloqueamos si falla — el engine
+  // acepta turnos sobre sesiones paused de todas formas.
+  if (session.status === "paused") {
+    await sb
+      .from("interview_sessions")
+      .update({
+        status: "in_progress",
+        resumed_at: new Date().toISOString(),
+      })
+      .eq("id", session.id);
+  }
+
   const sectionId = session.current_section_id ?? "contexto_general";
   const section = getSectionById(sectionId);
+
+  // Schema completo para la barra de progreso del chat.
+  const sections: ChatSection[] = sectionOrder().map((s) => ({
+    id: s.id,
+    title: s.title,
+    order: s.order,
+  }));
 
   const { data: turns } = await sb
     .from("interview_turns")
@@ -44,6 +66,8 @@ export default async function InterviewPage({
       sectionId={sectionId}
       initialMessages={initialMessages}
       initialSectionTitle={section?.title ?? sectionId}
+      sections={sections}
+      completedSectionIds={session.completed_section_ids ?? []}
     />
   );
 }
