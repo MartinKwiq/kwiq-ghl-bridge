@@ -1,10 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/logo";
 import { BrandingUploader } from "@/components/branding-uploader";
+import {
+  HelperCard,
+  HelperToggleButton,
+} from "@/components/interview/helper-card";
+import { getHelper, userIsAskingForHelp } from "@/lib/interview-helpers";
 
 type Role = "user" | "assistant";
 interface UiMessage {
@@ -32,7 +37,23 @@ export function Chat({
     { id: sectionId, title: initialSectionTitle },
   );
   const [error, setError] = useState<string | null>(null);
+  /** Slot (question_id) en el que el bot está trabajando ahora. Lo setea el
+   *  engine devolviendo `nextFocus` en cada turno. Sirve para elegir el helper
+   *  contextual correcto. */
+  const [currentQuestionId, setCurrentQuestionId] = useState<string | null>(null);
+  const [helperOpen, setHelperOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Helper para la pregunta activa, si existe.
+  const activeHelper = useMemo(
+    () => (currentQuestionId ? getHelper(currentQuestionId) : undefined),
+    [currentQuestionId],
+  );
+
+  // Si cambia la pregunta activa, cerramos el helper anterior.
+  useEffect(() => {
+    setHelperOpen(false);
+  }, [currentQuestionId]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({
@@ -44,6 +65,15 @@ export function Chat({
   async function send() {
     const text = input.trim();
     if (!text || sending) return;
+
+    // Detección proactiva: si el usuario parece estar pidiendo ayuda y ya
+    // sabemos qué pregunta está activa con helper disponible, abrimos el
+    // helper sin bloquear el envío. Así el bot también recibe el mensaje y
+    // puede responder conversacionalmente; el drawer le da el paso a paso.
+    if (activeHelper && userIsAskingForHelp(text)) {
+      setHelperOpen(true);
+    }
+
     setInput("");
     setError(null);
     setMessages((m) => [...m, { role: "user", content: text }]);
@@ -62,6 +92,7 @@ export function Chat({
         message: string;
         status: UiMessage["status"];
         sectionId: string;
+        nextFocus?: string;
         sectionAdvanced?: { from: string; to: string | null };
       };
       setMessages((m) => [
@@ -71,6 +102,12 @@ export function Chat({
       if (data.sectionAdvanced?.to && data.sectionAdvanced.to !== currentSection.id) {
         // La API devuelve solo IDs; el título completo se recalcula en /entrevista con el schema.
         setCurrentSection({ id: data.sectionAdvanced.to, title: data.sectionAdvanced.to });
+      }
+      // Si el bot nos dijo sobre qué slot está trabajando, actualizamos el
+      // helper contextual. Si no mandó nextFocus (ocurre raramente), dejamos
+      // el previo — mejor UX que limpiarlo.
+      if (data.nextFocus) {
+        setCurrentQuestionId(data.nextFocus);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -144,6 +181,12 @@ export function Chat({
         </div>
       )}
 
+      {activeHelper && helperOpen && (
+        <div className="border-t border-kwiq-border px-6 pt-3">
+          <HelperCard helper={activeHelper} onClose={() => setHelperOpen(false)} />
+        </div>
+      )}
+
       <form
         className="border-t border-kwiq-border px-6 py-4"
         onSubmit={(e) => {
@@ -165,6 +208,13 @@ export function Chat({
             placeholder="Escribí tu respuesta…"
             className="min-h-[44px] flex-1 resize-none rounded-lg border border-kwiq-border bg-kwiq-bg/60 px-3 py-2 text-sm outline-none focus:border-kwiq-accent"
           />
+          {activeHelper && (
+            <HelperToggleButton
+              open={helperOpen}
+              onClick={() => setHelperOpen((v) => !v)}
+              disabled={sending}
+            />
+          )}
           <button
             type="submit"
             disabled={sending || !input.trim()}

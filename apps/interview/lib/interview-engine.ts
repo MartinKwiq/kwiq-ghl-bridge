@@ -33,6 +33,9 @@ export async function handleUserTurn(opts: {
   message: string;
   status: "in_progress" | "section_complete" | "need_clarification";
   sectionId: string;
+  /** Question_id sobre el que el LLM está trabajando ahora. La UI lo usa
+   *  para decidir qué helper contextual mostrar al costado del input. */
+  nextFocus?: string;
   sectionAdvanced?: { from: string; to: string | null };
   extracted: { question_id: string; value: unknown; confidence: number }[];
   turnIndex: number;
@@ -164,6 +167,7 @@ export async function handleUserTurn(opts: {
     message: parsed.message,
     status: parsed.status,
     sectionId,
+    nextFocus: parsed.next_focus,
     sectionAdvanced,
     extracted: parsed.extracted,
     turnIndex: assistantTurnIndex,
