@@ -127,15 +127,25 @@ export function LocationCreatePanel(props: LocationCreatePanelProps) {
           message: `Para crear la sub-cuenta faltan: ${(body.missing ?? []).join(", ")}. Editá el proyecto para completarlos.`,
         });
       } else if (body.status === "ghl_error") {
-        const isAuth = body.ghl_status === 401 || body.ghl_status === 403;
+        const isAuth =
+          body.ghl_status === 401 ||
+          body.ghl_status === 403 ||
+          /scope|permission|unauthorized|forbidden/i.test(body.message ?? "");
+        const isValidation = body.ghl_status === 422;
         setResult({
           kind: "err",
-          title: isAuth ? "GHL rechazó la operación" : "Error al hablar con GHL",
+          title: isAuth
+            ? "GHL rechazó la operación (auth)"
+            : isValidation
+              ? "GHL rechazó los datos (validación)"
+              : "Error al hablar con GHL",
           message:
             (body.message ?? "Error desconocido") +
             (isAuth
               ? "\n\nPosible causa: el Agency PIT no tiene scope locations.write. Regeneralo con los scopes correctos en /admin/ajustes."
-              : ""),
+              : isValidation
+                ? "\n\nGHL no aceptó algún campo del body. Si el mensaje no es claro, mandámelo y lo arreglamos."
+                : ""),
           helpLink: isAuth
             ? { href: "/admin/ajustes", label: "Ir a Ajustes" }
             : undefined,

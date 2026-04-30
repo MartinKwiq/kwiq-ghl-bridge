@@ -217,13 +217,14 @@ export async function createLocation(
   ctx: AgencyContext,
   input: CreateLocationInput,
 ): Promise<AgencyResult<CreatedLocation>> {
+  // GHL rechaza `firstName` y `lastName` en el top-level del POST /locations/
+  // (responde 422: "property firstName should not exist"). Los datos del
+  // admin humano van solo dentro de `prospectInfo` más abajo.
   const body: Record<string, unknown> = {
     companyId: ctx.companyId,
     name: input.name,
     phone: input.phone,
     email: input.email,
-    firstName: input.firstName,
-    lastName: input.lastName,
     country: input.country,
     timezone: input.timezone,
   };

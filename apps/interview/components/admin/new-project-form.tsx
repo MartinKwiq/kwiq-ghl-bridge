@@ -300,20 +300,33 @@ export function NewProjectForm() {
             <p className="font-medium text-kwiq-text">
               ⚠ La sub-cuenta GHL no se creó.
             </p>
-            <p className="mt-2 text-kwiq-muted">{postCreate.ghl_message}</p>
-            {postCreate.ghl_status === "ghl_error" && (
-              <p className="mt-2 text-xs text-kwiq-muted">
-                Posible causa: el Agency PIT no tiene el scope{" "}
-                <code className="text-kwiq-text">locations.write</code>. Andá a{" "}
-                <a
-                  href="/admin/ajustes"
-                  className="text-kwiq-accent hover:underline"
-                >
-                  /admin/ajustes
-                </a>{" "}
-                y regenerá el token con el checkbox tildado.
-              </p>
-            )}
+            <p className="mt-2 whitespace-pre-line text-kwiq-muted">
+              {postCreate.ghl_message}
+            </p>
+            {/* Hint específico solo si el mensaje sugiere auth / scopes —
+                no aplica para errores de validación (422) o de red. */}
+            {postCreate.ghl_status === "ghl_error" &&
+              isAuthError(postCreate.ghl_message) && (
+                <p className="mt-2 text-xs text-kwiq-muted">
+                  Posible causa: el Agency PIT no tiene el scope{" "}
+                  <code className="text-kwiq-text">locations.write</code>. Andá a{" "}
+                  <a
+                    href="/admin/ajustes"
+                    className="text-kwiq-accent hover:underline"
+                  >
+                    /admin/ajustes
+                  </a>{" "}
+                  y regenerá el token con el checkbox tildado.
+                </p>
+              )}
+            {postCreate.ghl_status === "ghl_error" &&
+              !isAuthError(postCreate.ghl_message) && (
+                <p className="mt-2 text-xs text-kwiq-muted">
+                  Es un error de validación o de red. Si el mensaje no es
+                  claro, copialo y mándamelo y lo arreglamos. El proyecto
+                  quedó guardado — podés reintentar desde el detalle.
+                </p>
+              )}
           </div>
         )}
 
@@ -790,6 +803,24 @@ function Field({
       {children}
       {hint && <span className="text-xs text-kwiq-muted/80">{hint}</span>}
     </label>
+  );
+}
+
+/**
+ * Heurística: ¿el mensaje de error de GHL sugiere problema de auth (PIT
+ * sin scope) o algo más (validación de body, red, etc.)? Lo usamos para
+ * mostrar el hint correcto en la pantalla post-create.
+ */
+function isAuthError(message: string | undefined): boolean {
+  if (!message) return false;
+  const m = message.toLowerCase();
+  return (
+    m.includes("401") ||
+    m.includes("403") ||
+    m.includes("unauthorized") ||
+    m.includes("forbidden") ||
+    m.includes("scope") ||
+    m.includes("permission")
   );
 }
 
