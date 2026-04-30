@@ -5,6 +5,7 @@ import {
   ProvisionPanel,
   type RunReport,
 } from "@/components/admin/provision-panel";
+import { LocationCreatePanel } from "@/components/admin/location-create-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +27,7 @@ export default async function ProjectDetailPage({ params }: Props) {
   const { data: project } = await sb
     .from("kwiq_projects")
     .select(
-      "id, slug, client_name, contact_email, status, auth_mode, ghl_location_id, ghl_company_id, ghl_token_enc, ghl_refresh_enc, ghl_token_expires_at, ghl_scopes, notes, created_at, updated_at",
+      "id, slug, client_name, contact_email, status, auth_mode, ghl_location_id, ghl_company_id, ghl_token_enc, ghl_refresh_enc, ghl_token_expires_at, ghl_scopes, notes, created_at, updated_at, ghl_location_created_at, admin_first_name, admin_last_name, business_name, business_country, business_timezone, business_phone, snapshot_id",
     )
     .eq("slug", slug)
     .maybeSingle();
@@ -180,6 +181,24 @@ export default async function ProjectDetailPage({ params }: Props) {
           }
         />
       </section>
+
+      <LocationCreatePanel
+        slug={project.slug as string}
+        locationId={(project.ghl_location_id as string | null) ?? null}
+        locationCreatedAt={
+          (project.ghl_location_created_at as string | null) ?? null
+        }
+        businessName={(project.business_name as string | null) ?? null}
+        businessCountry={(project.business_country as string | null) ?? null}
+        businessTimezone={
+          (project.business_timezone as string | null) ?? null
+        }
+        businessPhone={(project.business_phone as string | null) ?? null}
+        adminFirstName={(project.admin_first_name as string | null) ?? null}
+        adminLastName={(project.admin_last_name as string | null) ?? null}
+        contactEmail={(project.contact_email as string | null) ?? null}
+        snapshotId={(project.snapshot_id as string | null) ?? null}
+      />
 
       <section className="rounded-2xl border border-kwiq-border bg-kwiq-panel/40 p-6">
         <h2 className="font-display text-lg font-semibold uppercase tracking-wide">
