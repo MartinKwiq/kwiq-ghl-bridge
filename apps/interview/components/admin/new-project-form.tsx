@@ -9,7 +9,6 @@ import {
   TIMEZONES,
   suggestTimezoneForCountry,
 } from "@/lib/business-data";
-import { LocationPicker } from "@/components/admin/location-picker";
 
 type AuthMode = "pit_agency" | "pit_location" | "oauth_marketplace";
 
@@ -67,8 +66,11 @@ export function NewProjectForm() {
   const [businessState, setBusinessState] = useState("");
   const [businessCountry, setBusinessCountry] = useState("MX");
   const [businessPostalCode, setBusinessPostalCode] = useState("");
-  const [businessLat, setBusinessLat] = useState<number | null>(null);
-  const [businessLng, setBusinessLng] = useState<number | null>(null);
+  // Lat/lng quedan reservados para una futura integración de mapa pero por
+  // ahora siempre van null — el form no los expone porque GHL hace su propio
+  // geocoding al recibir la dirección.
+  const businessLat: number | null = null;
+  const businessLng: number | null = null;
   const [businessTimezone, setBusinessTimezone] = useState("America/Mexico_City");
 
   // ─── Admin de la sub-cuenta ─────────────────────────────────────────
@@ -476,22 +478,6 @@ export function NewProjectForm() {
             />
           </Field>
         </div>
-
-        <LocationPicker
-          country={businessCountry}
-          city={businessCity}
-          address={businessAddress}
-          lat={businessLat}
-          lng={businessLng}
-          onPick={({ lat, lng, address, city, state, postalCode }) => {
-            setBusinessLat(lat);
-            setBusinessLng(lng);
-            if (address && !businessAddress) setBusinessAddress(address);
-            if (city && !businessCity) setBusinessCity(city);
-            if (state && !businessState) setBusinessState(state);
-            if (postalCode && !businessPostalCode) setBusinessPostalCode(postalCode);
-          }}
-        />
       </Section>
 
       {/* ─── Admin de la sub-cuenta ──────────────────────────── */}
