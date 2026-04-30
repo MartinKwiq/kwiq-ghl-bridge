@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 import { encryptSecret } from "@/lib/crypto";
 import { requireAdminRole } from "@/lib/admin-auth";
 import { createLocationForProject } from "@/lib/provisioner/create-location";
+import { inviteClient } from "@/lib/invite-client";
 
 export const runtime = "nodejs"; // node:crypto needed for AES-256-GCM
 export const dynamic = "force-dynamic";
@@ -54,6 +55,10 @@ const BodySchema = z.object({
    *  false para mantener compatibilidad con el flow legacy donde el admin
    *  crea la sub-cuenta a mano. */
   create_ghl_location: z.boolean().optional(),
+  /** Si true, después de crear el proyecto, le mandamos al cliente
+   *  (`contact_email`) un magic link para activar su cuenta y arrancar la
+   *  entrevista. Default true en el form nuevo. */
+  invite_client: z.boolean().optional(),
 });
 
 /**
@@ -206,8 +211,34 @@ export async function POST(req: Request) {
     }
   }
 
+  // 7) Invitación automática del cliente (Sprint 1B+)
+  // Si el admin pidió invitar al cliente y tenemos un email de contacto,
+  // disparamos el magic link al email del admin del cliente. La invitación
+  // se manda incluso si la creación de la sub-cuenta GHL falló — el cliente
+  // puede empezar a hacer la entrevista mientras nosotros resolvemos el
+  // problema de GHL.
+  let clientInvite: Awaited<ReturnType<typeof inviteClient>> | null = null;
+  if (parsed.invite_client && contactEmail) {
+    clientInvite = await inviteClient({
+      email: contactEmail,
+      displayName:
+        [blank(parsed.admin_first_name), blank(parsed.admin_last_name)]
+          .filter(Boolean)
+          .join(" ") || parsed.client_name,
+      companyName: blank(parsed.business_name) ?? parsed.client_name,
+      phone: blank(parsed.admin_phone) ?? blank(parsed.business_phone),
+      projectId: inserted.id,
+      invitedBy: me.userId,
+    });
+  }
+
   return NextResponse.json(
-    { ok: true, ...inserted, ghl_creation: ghl },
+    {
+      ok: true,
+      ...inserted,
+      ghl_creation: ghl,
+      client_invitation: clientInvite,
+    },
     { status: 201 },
   );
 }

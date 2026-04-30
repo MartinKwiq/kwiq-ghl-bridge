@@ -44,6 +44,9 @@ export function NewProjectForm() {
     ghl_status?: string;
     ghl_message?: string;
     ghl_missing?: string[];
+    invite_status?: string;
+    invite_message?: string;
+    invite_email?: string;
   } | null>(null);
 
   // ─── Cliente Kwiq ───────────────────────────────────────────────────
@@ -86,6 +89,9 @@ export function NewProjectForm() {
 
   // ─── Crear sub-cuenta GHL al guardar ────────────────────────────────
   const [createGhlLocation, setCreateGhlLocation] = useState(true);
+
+  // ─── Invitar al cliente al guardar ──────────────────────────────────
+  const [inviteClientOnSave, setInviteClientOnSave] = useState(true);
 
   // Auto-fetch de snapshots al montar.
   useEffect(() => {
@@ -159,6 +165,15 @@ export function NewProjectForm() {
       }
     }
 
+    // Si va a invitar al cliente, necesitamos el email obligatoriamente.
+    if (inviteClientOnSave && !contactEmail.trim()) {
+      setError(
+        "Para invitar al cliente automáticamente necesitamos el email del admin. Cargalo arriba o desactivá el toggle de invitación.",
+      );
+      setLoading(false);
+      return;
+    }
+
     const finalSnapshotId = snapshotIdManual.trim() || snapshotId || null;
 
     try {
@@ -185,6 +200,7 @@ export function NewProjectForm() {
         business_lng: businessLng,
         snapshot_id: finalSnapshotId,
         create_ghl_location: createGhlLocation,
+        invite_client: inviteClientOnSave,
       };
       if (authMode === "pit_location" && pit.trim()) {
         payload.ghl_pit = pit.trim();
@@ -205,6 +221,11 @@ export function NewProjectForm() {
           message?: string;
           missing?: string[];
         } | null;
+        client_invitation?: {
+          status: string;
+          message?: string;
+          email?: string;
+        } | null;
       };
 
       if (!res.ok) {
@@ -216,19 +237,26 @@ export function NewProjectForm() {
         return;
       }
 
-      // Proyecto creado. Si falló la creación de la sub-cuenta, mostramos
-      // un mensaje de seguimiento sin bloquear al admin.
+      // Proyecto creado. Evaluamos los dos sub-resultados (sub-cuenta GHL +
+      // invitación al cliente) y decidimos si mostrar pantalla intermedia o
+      // redirigir directamente al detalle.
       const ghl = body.ghl_creation;
-      if (
-        ghl &&
-        ghl.status !== "created" &&
-        ghl.status !== "already_exists"
-      ) {
+      const inv = body.client_invitation;
+
+      const ghlFailed =
+        !!ghl && ghl.status !== "created" && ghl.status !== "already_exists";
+      const inviteFailed =
+        !!inv && inv.status !== "invited" && inv.status !== "already_exists";
+
+      if (ghlFailed || inviteFailed) {
         setPostCreate({
           slug: body.slug ?? slug,
-          ghl_status: ghl.status,
-          ghl_message: ghl.message,
-          ghl_missing: ghl.missing,
+          ghl_status: ghl?.status,
+          ghl_message: ghl?.message,
+          ghl_missing: ghl?.missing,
+          invite_status: inv?.status,
+          invite_message: inv?.message,
+          invite_email: inv?.email,
         });
         return;
       }
@@ -242,43 +270,86 @@ export function NewProjectForm() {
     }
   }
 
-  // Pantalla intermedia: proyecto creado pero sub-cuenta GHL falló.
+  // Pantalla intermedia: proyecto creado pero algo de los pasos auxiliares
+  // (sub-cuenta GHL o invitación al cliente) falló. Mostramos cada uno con
+  // su error puntual y links de acción.
   if (postCreate) {
+    const ghlFailed =
+      !!postCreate.ghl_status &&
+      postCreate.ghl_status !== "created" &&
+      postCreate.ghl_status !== "already_exists";
+    const inviteFailed =
+      !!postCreate.invite_status &&
+      postCreate.invite_status !== "invited" &&
+      postCreate.invite_status !== "already_exists";
+
     return (
       <div className="flex flex-col gap-4 text-sm">
-        <div className="rounded-md border border-kwiq-warn/40 bg-kwiq-warn/10 px-3 py-3">
+        <div className="rounded-md border border-kwiq-ok/40 bg-kwiq-ok/10 px-3 py-3">
           <p className="font-medium text-kwiq-text">
-            Proyecto creado, pero la sub-cuenta GHL no se creó.
+            ✓ Proyecto creado en Kwiq.
           </p>
-          <p className="mt-2 text-kwiq-muted">{postCreate.ghl_message}</p>
-          {postCreate.ghl_status === "ghl_error" && (
-            <p className="mt-2 text-xs text-kwiq-muted">
-              Posible causa: el Agency PIT no tiene el scope{" "}
-              <code className="text-kwiq-text">locations.write</code>. Andá a{" "}
-              <a
-                href="/admin/ajustes"
-                className="text-kwiq-accent hover:underline"
-              >
-                /admin/ajustes
-              </a>{" "}
-              y regenerá el token con el checkbox tildado.
-            </p>
-          )}
+          <p className="mt-1 text-xs text-kwiq-muted">
+            Algunos pasos automáticos quedaron pendientes. Podés terminar
+            desde el detalle del proyecto.
+          </p>
         </div>
 
-        <div className="flex gap-2">
+        {ghlFailed && (
+          <div className="rounded-md border border-kwiq-warn/40 bg-kwiq-warn/10 px-3 py-3">
+            <p className="font-medium text-kwiq-text">
+              ⚠ La sub-cuenta GHL no se creó.
+            </p>
+            <p className="mt-2 text-kwiq-muted">{postCreate.ghl_message}</p>
+            {postCreate.ghl_status === "ghl_error" && (
+              <p className="mt-2 text-xs text-kwiq-muted">
+                Posible causa: el Agency PIT no tiene el scope{" "}
+                <code className="text-kwiq-text">locations.write</code>. Andá a{" "}
+                <a
+                  href="/admin/ajustes"
+                  className="text-kwiq-accent hover:underline"
+                >
+                  /admin/ajustes
+                </a>{" "}
+                y regenerá el token con el checkbox tildado.
+              </p>
+            )}
+          </div>
+        )}
+
+        {inviteFailed && (
+          <div className="rounded-md border border-kwiq-warn/40 bg-kwiq-warn/10 px-3 py-3">
+            <p className="font-medium text-kwiq-text">
+              ⚠ No pudimos mandar la invitación al cliente.
+            </p>
+            <p className="mt-2 text-kwiq-muted">
+              {postCreate.invite_message ??
+                "Hubo un error mandando el email. Probá invitar al cliente manualmente desde Ajustes → Usuarios."}
+            </p>
+          </div>
+        )}
+
+        <div className="flex flex-wrap gap-2">
           <a
             href={`/admin/proyectos/${postCreate.slug}`}
             className="rounded-lg border border-kwiq-border px-3 py-1.5 text-xs text-kwiq-text hover:bg-kwiq-bg/40"
           >
-            Ir al proyecto y reintentar después
+            Ir al proyecto
           </a>
-          {postCreate.ghl_status === "ghl_error" && (
+          {ghlFailed && postCreate.ghl_status === "ghl_error" && (
             <a
               href="/admin/ajustes"
               className="rounded-lg bg-kwiq-accent px-3 py-1.5 text-xs font-medium text-kwiq-bg hover:bg-kwiq-accentHover"
             >
-              Ir a Ajustes
+              Ir a Ajustes (regenerar PIT)
+            </a>
+          )}
+          {inviteFailed && (
+            <a
+              href="/admin/ajustes/usuarios"
+              className="rounded-lg border border-kwiq-border px-3 py-1.5 text-xs text-kwiq-text hover:bg-kwiq-bg/40"
+            >
+              Invitar cliente manualmente
             </a>
           )}
         </div>
@@ -575,8 +646,11 @@ export function NewProjectForm() {
         </Field>
       </Section>
 
-      {/* ─── Toggle creación ─────────────────────────────────── */}
-      <Section title="Crear sub-cuenta en GHL ahora">
+      {/* ─── Toggles automáticos ─────────────────────────────── */}
+      <Section
+        title="Automáticos al guardar"
+        subtitle="Estos pasos se disparan solos para que vos no tengas que ir a otra pantalla. Si alguno falla, el proyecto queda guardado y podés reintentar después."
+      >
         <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-kwiq-border bg-kwiq-bg/40 px-3 py-3">
           <input
             type="checkbox"
@@ -586,13 +660,34 @@ export function NewProjectForm() {
           />
           <span className="flex flex-col gap-1 text-sm">
             <span className="text-kwiq-text">
-              Crear la sub-cuenta en GHL al guardar
+              Crear la sub-cuenta en GHL
             </span>
             <span className="text-xs text-kwiq-muted">
-              Si está activo, además de guardar el proyecto en Kwiq llamamos a
-              GHL para crear la sub-cuenta con los datos de arriba. Si falla,
-              el proyecto queda guardado y podés reintentar después desde el
-              detalle del proyecto.
+              Llamamos a GHL para crear la sub-cuenta con los datos de arriba.
+              Aplicamos el snapshot elegido si hay uno.
+            </span>
+          </span>
+        </label>
+
+        <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-kwiq-border bg-kwiq-bg/40 px-3 py-3">
+          <input
+            type="checkbox"
+            checked={inviteClientOnSave}
+            onChange={(e) => setInviteClientOnSave(e.target.checked)}
+            className="mt-0.5"
+          />
+          <span className="flex flex-col gap-1 text-sm">
+            <span className="text-kwiq-text">
+              Invitar al cliente por email
+            </span>
+            <span className="text-xs text-kwiq-muted">
+              Le mandamos al admin del cliente (
+              <code className="text-kwiq-text">
+                {contactEmail || "email del admin"}
+              </code>
+              ) un magic link para que active su cuenta y arranque la
+              entrevista. Vos no le tenés que mandar nada manualmente —
+              Supabase manda el email automáticamente.
             </span>
           </span>
         </label>
@@ -629,12 +724,8 @@ export function NewProjectForm() {
           )}
         >
           {loading
-            ? createGhlLocation
-              ? "Creando proyecto y sub-cuenta…"
-              : "Guardando…"
-            : createGhlLocation
-              ? "Crear proyecto y sub-cuenta"
-              : "Crear proyecto"}
+            ? "Creando…"
+            : submitButtonLabel(createGhlLocation, inviteClientOnSave)}
         </button>
         <button
           type="button"
@@ -700,6 +791,17 @@ function Field({
       {hint && <span className="text-xs text-kwiq-muted/80">{hint}</span>}
     </label>
   );
+}
+
+/**
+ * Texto del botón submit según los toggles activos. Se hace explícito qué va
+ * a hacer el click para que el admin no tenga sorpresas.
+ */
+function submitButtonLabel(createGhl: boolean, invite: boolean): string {
+  if (createGhl && invite) return "Crear proyecto + sub-cuenta + invitar cliente";
+  if (createGhl) return "Crear proyecto + sub-cuenta GHL";
+  if (invite) return "Crear proyecto + invitar cliente";
+  return "Crear proyecto";
 }
 
 function errorLabel(code?: string): string | null {
