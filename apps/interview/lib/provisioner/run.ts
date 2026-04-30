@@ -25,6 +25,9 @@ import { stepTags } from "./steps/tags";
 import { stepCustomFields } from "./steps/custom-fields";
 import { stepPipelines } from "./steps/pipelines";
 import { stepUsers } from "./steps/users";
+import { stepCalendars } from "./steps/calendars";
+import { stepMedia } from "./steps/media";
+import { stepAiAgent } from "./steps/ai-agent";
 
 export interface StartRunOptions {
   project_id: string;
@@ -139,8 +142,10 @@ export async function runProvisioner(
     step_results.push(await stepCustomFields(ctx, input, run_id));
     step_results.push(await stepCustomValues(ctx, input, run_id));
     step_results.push(await stepPipelines(ctx, input, run_id));
+    step_results.push(await stepCalendars(ctx, input, run_id));
     step_results.push(await stepUsers(ctx, input, run_id));
-    // TODO: calendars, ai_agent (Conversation AI prompt + KB).
+    step_results.push(await stepMedia(ctx, input, run_id));
+    step_results.push(await stepAiAgent(ctx, input, run_id));
   } catch (err) {
     return finalizeRun(run_id, {
       started_at,
