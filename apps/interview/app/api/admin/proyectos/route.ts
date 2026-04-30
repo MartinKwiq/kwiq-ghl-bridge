@@ -3,6 +3,7 @@ import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { encryptSecret } from "@/lib/crypto";
 import { requireAdminRole } from "@/lib/admin-auth";
+import { createLocationForProject } from "@/lib/provisioner/create-location";
 
 export const runtime = "nodejs"; // node:crypto needed for AES-256-GCM
 export const dynamic = "force-dynamic";
@@ -13,23 +14,46 @@ const SlugSchema = z
   .max(48)
   .regex(/^[a-z0-9][a-z0-9-]*$/, "slug_invalid");
 
+/** Email opcional con string vacío permitido (los formularios mandan "" a veces). */
+const OptionalEmail = z
+  .union([z.string().email().max(254), z.literal(""), z.null()])
+  .optional();
+
+/** Texto opcional con string vacío permitido. */
+const OptionalText = (max: number) =>
+  z.union([z.string().max(max), z.literal(""), z.null()]).optional();
+
 const BodySchema = z.object({
   client_name: z.string().min(1).max(120),
   slug: SlugSchema,
-  contact_email: z
-    .union([z.string().email().max(254), z.literal(""), z.null()])
-    .optional(),
+  contact_email: OptionalEmail,
   auth_mode: z.enum(["pit_agency", "pit_location", "oauth_marketplace"]),
-  ghl_location_id: z
-    .union([z.string().min(1).max(64), z.literal(""), z.null()])
-    .optional(),
-  ghl_company_id: z
-    .union([z.string().min(1).max(64), z.literal(""), z.null()])
-    .optional(),
+  ghl_location_id: OptionalText(64),
+  ghl_company_id: OptionalText(64),
   ghl_pit: z.string().min(8).max(512).optional(),
-  notes: z
-    .union([z.string().max(2000), z.literal(""), z.null()])
-    .optional(),
+  notes: OptionalText(2000),
+  // ─── Sprint 1B: datos del negocio + admin para crear sub-cuenta GHL ───
+  admin_first_name: OptionalText(80),
+  admin_last_name: OptionalText(80),
+  admin_phone: OptionalText(40),
+  business_name: OptionalText(200),
+  business_niche: OptionalText(80),
+  business_phone: OptionalText(40),
+  business_address: OptionalText(200),
+  business_city: OptionalText(120),
+  business_state: OptionalText(120),
+  business_country: OptionalText(2), // ISO-3166-1 alpha-2
+  business_postal_code: OptionalText(20),
+  business_website: OptionalText(255),
+  business_timezone: OptionalText(64),
+  business_lat: z.number().min(-90).max(90).optional().nullable(),
+  business_lng: z.number().min(-180).max(180).optional().nullable(),
+  snapshot_id: OptionalText(64),
+  /** Si true, después de crear el proyecto en DB, creamos también la
+   *  sub-cuenta en GHL automáticamente. Default true para el flow nuevo;
+   *  false para mantener compatibilidad con el flow legacy donde el admin
+   *  crea la sub-cuenta a mano. */
+  create_ghl_location: z.boolean().optional(),
 });
 
 /**
@@ -129,8 +153,26 @@ export async function POST(req: Request) {
       ghl_token_enc: tokenEnc,
       notes,
       created_by: me.userId,
+      // Sprint 1B: persistimos los datos del negocio + admin para que
+      // luego el provisioner pueda crear la sub-cuenta GHL.
+      admin_first_name: blank(parsed.admin_first_name),
+      admin_last_name: blank(parsed.admin_last_name),
+      admin_phone: blank(parsed.admin_phone),
+      business_name: blank(parsed.business_name),
+      business_niche: blank(parsed.business_niche),
+      business_phone: blank(parsed.business_phone),
+      business_address: blank(parsed.business_address),
+      business_city: blank(parsed.business_city),
+      business_state: blank(parsed.business_state),
+      business_country: blank(parsed.business_country)?.toUpperCase() ?? null,
+      business_postal_code: blank(parsed.business_postal_code),
+      business_website: blank(parsed.business_website),
+      business_timezone: blank(parsed.business_timezone),
+      business_lat: parsed.business_lat ?? null,
+      business_lng: parsed.business_lng ?? null,
+      snapshot_id: blank(parsed.snapshot_id),
     })
-    .select("id, slug, status, auth_mode, created_at")
+    .select("id, slug, status, auth_mode, created_at, ghl_location_id")
     .single();
 
   if (insertErr) {
@@ -146,7 +188,28 @@ export async function POST(req: Request) {
     );
   }
 
-  return NextResponse.json({ ok: true, ...inserted }, { status: 201 });
+  // 6) Creación automática de la sub-cuenta GHL (Sprint 1B)
+  // Si el admin pidió crear la sub-cuenta y todavía no hay location_id,
+  // intentamos crearla ahora. Si falla, devolvemos el proyecto creado +
+  // error de GHL para que la UI muestre el detalle y permita reintentar.
+  let ghl: Awaited<ReturnType<typeof createLocationForProject>> | null = null;
+  if (parsed.create_ghl_location && !inserted.ghl_location_id) {
+    ghl = await createLocationForProject(inserted.id);
+    if (ghl.status === "created" || ghl.status === "already_exists") {
+      // Refrescamos el proyecto con el location_id recién guardado.
+      const { data: refreshed } = await admin
+        .from("kwiq_projects")
+        .select("id, slug, status, auth_mode, created_at, ghl_location_id")
+        .eq("id", inserted.id)
+        .single();
+      if (refreshed) Object.assign(inserted, refreshed);
+    }
+  }
+
+  return NextResponse.json(
+    { ok: true, ...inserted, ghl_creation: ghl },
+    { status: 201 },
+  );
 }
 
 /**

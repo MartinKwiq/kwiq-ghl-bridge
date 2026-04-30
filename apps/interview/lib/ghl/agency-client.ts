@@ -155,6 +155,132 @@ export async function fetchAgencyLocations(
   return { ok: true, data: res.data.locations ?? [] };
 }
 
+/**
+ * Input para crear una nueva sub-cuenta. Replica los campos que GHL
+ * requiere u ofrece en el wizard "Add sub-account":
+ *
+ *  - `name`, `phone`, `address`, `city`, `state`, `country`,
+ *    `postalCode`, `website`, `timezone`: del negocio.
+ *  - `firstName`, `lastName`, `email`: del usuario admin de la sub-cuenta
+ *    (humano que va a recibir la invitación de GHL).
+ *  - `prospectInfo`: GHL clona estos datos como el primer "prospect" en
+ *    la nueva sub-cuenta — útil pero opcional.
+ *  - `snapshotId`: si está, GHL aplica el snapshot al crear (workflows,
+ *    templates, etc.). Si no, la sub-cuenta nace vacía.
+ *  - `companyId`: la agencia bajo la que cuelga (siempre el de Kwiq).
+ *
+ * Nota: GHL exige al menos `name`, `email`, `firstName`, `lastName`,
+ * `phone` y `country`. El resto es opcional pero recomendado.
+ */
+export interface CreateLocationInput {
+  name: string;
+  phone: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  country: string;
+  postalCode?: string;
+  website?: string;
+  timezone: string;
+  snapshotId?: string;
+  /** Coordenadas del negocio (si las capturamos vía mapa). */
+  lat?: number;
+  lng?: number;
+}
+
+/** Respuesta de POST /locations/ — solo los campos que nos importan. */
+export interface CreatedLocation {
+  id: string;
+  name: string;
+  email?: string | null;
+  companyId?: string | null;
+  timezone?: string | null;
+}
+
+/**
+ * POST /locations/ — crea una sub-cuenta nueva bajo la agencia. El PIT
+ * tiene que tener el scope `locations.write`; sin él, GHL responde 403
+ * con un mensaje genérico.
+ *
+ * GHL devuelve el `id` (que es nuestro `ghl_location_id`). Lo guardamos
+ * en `kwiq_projects` para que el resto del provisioner pueda configurar
+ * la sub-cuenta usando el header `Location-Id`.
+ *
+ * Es seguro reintentar este call si falla a mitad — GHL no expone un
+ * concepto de "idempotency-key", pero la combinación (companyId + name +
+ * email) es chequeada y devuelve 409 si ya existe.
+ */
+export async function createLocation(
+  ctx: AgencyContext,
+  input: CreateLocationInput,
+): Promise<AgencyResult<CreatedLocation>> {
+  const body: Record<string, unknown> = {
+    companyId: ctx.companyId,
+    name: input.name,
+    phone: input.phone,
+    email: input.email,
+    firstName: input.firstName,
+    lastName: input.lastName,
+    country: input.country,
+    timezone: input.timezone,
+  };
+
+  if (input.address) body.address = input.address;
+  if (input.city) body.city = input.city;
+  if (input.state) body.state = input.state;
+  if (input.postalCode) body.postalCode = input.postalCode;
+  if (input.website) body.website = input.website;
+  if (input.snapshotId) body.snapshotId = input.snapshotId;
+
+  // GHL acepta lat/lng como geocodificación pre-resuelta — nos ahorra que
+  // ellos hagan geocoding interno (con mejor consistencia si usamos Mapbox).
+  if (typeof input.lat === "number" && typeof input.lng === "number") {
+    body.location = { lat: input.lat, lng: input.lng };
+  }
+
+  // Prospect: GHL crea un contacto inicial con los datos del admin. Útil
+  // como "primer registro" de la sub-cuenta.
+  body.prospectInfo = {
+    firstName: input.firstName,
+    lastName: input.lastName,
+    email: input.email,
+  };
+
+  const res = await agencyFetch<{ id?: string; location?: CreatedLocation } & CreatedLocation>(
+    ctx,
+    `/locations/`,
+    { method: "POST", body: JSON.stringify(body), headers: { "Content-Type": "application/json" } },
+  );
+  if (!res.ok) return res;
+
+  // GHL a veces devuelve { id, ... } directo y a veces { location: { id, ... } }
+  // según la versión del endpoint. Normalizamos.
+  const data = res.data;
+  const created: CreatedLocation = data.location
+    ? data.location
+    : {
+        id: data.id ?? "",
+        name: data.name ?? input.name,
+        email: data.email ?? input.email,
+        companyId: data.companyId ?? ctx.companyId,
+        timezone: data.timezone ?? input.timezone,
+      };
+
+  if (!created.id) {
+    return {
+      ok: false,
+      reason: "http_error",
+      status: 500,
+      message: "GHL respondió 200 pero no devolvió `id` de la sub-cuenta nueva.",
+    };
+  }
+
+  return { ok: true, data: created };
+}
+
 // ---------- Helpers UI ----------
 
 /** Formatea el error de un AgencyResult para mostrar al admin sin stack traces. */
