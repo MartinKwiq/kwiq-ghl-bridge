@@ -6,6 +6,7 @@ import {
   type RunReport,
 } from "@/components/admin/provision-panel";
 import { LocationCreatePanel } from "@/components/admin/location-create-panel";
+import { sectionOrder, getSectionById } from "@/lib/interview-schema";
 
 export const dynamic = "force-dynamic";
 
@@ -38,10 +39,33 @@ export default async function ProjectDetailPage({ params }: Props) {
 
   const { data: sessions } = await sb
     .from("interview_sessions")
-    .select("id, status, section, updated_at, created_at")
+    .select(
+      "id, session_token, status, current_section_id, completed_section_ids, created_at, updated_at, completed_at, paused_at, resumed_at, user_id",
+    )
     .eq("project_id", project.id)
     .order("updated_at", { ascending: false })
     .limit(20);
+
+  // Email + nombre del cliente que está haciendo cada sesión, para que el admin
+  // sepa quién es. Lo joineamos en memoria — son pocas sesiones por proyecto.
+  const userIds = [
+    ...new Set(
+      (sessions ?? []).map((s) => s.user_id).filter(Boolean) as string[],
+    ),
+  ];
+  const usersById: Record<string, { email: string; display_name: string | null }> = {};
+  if (userIds.length > 0) {
+    const { data: clients } = await sb
+      .from("kwiq_interview_users")
+      .select("user_id, email, display_name")
+      .in("user_id", userIds);
+    for (const c of clients ?? []) {
+      usersById[c.user_id as string] = {
+        email: (c.email as string) ?? "",
+        display_name: (c.display_name as string | null) ?? null,
+      };
+    }
+  }
 
   const { data: assets } = await sb
     .from("branding_assets")
@@ -312,28 +336,95 @@ export default async function ProjectDetailPage({ params }: Props) {
 
         {!sessions || sessions.length === 0 ? (
           <p className="rounded-xl border border-kwiq-border bg-kwiq-panel/40 p-6 text-sm text-kwiq-muted">
-            Todavía no hay entrevistas para este proyecto. Se crean al abrir
-            el link de arriba.
+            Todavía no hay entrevistas para este proyecto. Se crean cuando el
+            cliente hace click en el link del email de invitación y arranca la
+            primera entrevista.
           </p>
         ) : (
-          <ul className="divide-y divide-kwiq-border rounded-xl border border-kwiq-border bg-kwiq-panel/40">
-            {sessions.map((s) => (
-              <li
-                key={s.id}
-                className="flex items-center justify-between px-4 py-3 text-sm"
-              >
-                <div className="min-w-0">
-                  <div className="font-mono text-xs text-kwiq-muted">
-                    {s.id}
+          <ul className="flex flex-col gap-3">
+            {sessions.map((s) => {
+              const totalSections = sectionOrder().length;
+              const completedCount = (
+                (s.completed_section_ids as string[] | null) ?? []
+              ).length;
+              const progressPct = Math.round(
+                (completedCount / totalSections) * 100,
+              );
+              const status = s.status as string;
+              const isDone = status === "completed";
+              const isPaused = status === "paused";
+              const currentSection = s.current_section_id
+                ? (getSectionById(s.current_section_id as string)?.title ??
+                    (s.current_section_id as string))
+                : null;
+              const userInfo = s.user_id
+                ? usersById[s.user_id as string]
+                : undefined;
+              return (
+                <li
+                  key={s.id}
+                  className="rounded-xl border border-kwiq-border bg-kwiq-panel/40 px-4 py-3 text-sm"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <SessionStatusBadge status={status} />
+                        {userInfo && (
+                          <span className="text-xs text-kwiq-muted">
+                            {userInfo.display_name
+                              ? `${userInfo.display_name} · `
+                              : ""}
+                            <a
+                              href={`mailto:${userInfo.email}`}
+                              className="text-kwiq-accent hover:underline"
+                            >
+                              {userInfo.email}
+                            </a>
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-kwiq-muted">
+                        <span>
+                          <strong className="text-kwiq-text">
+                            {completedCount}/{totalSections}
+                          </strong>{" "}
+                          secciones ({progressPct}%)
+                        </span>
+                        {!isDone && currentSection && (
+                          <span>
+                            · próxima:{" "}
+                            <strong className="text-kwiq-text">
+                              {currentSection}
+                            </strong>
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-kwiq-border/40">
+                        <div
+                          className="h-full bg-kwiq-accent transition-all"
+                          style={{ width: `${progressPct}%` }}
+                        />
+                      </div>
+
+                      <div className="mt-2 text-xs text-kwiq-muted">
+                        {formatTimeline(s)}
+                      </div>
+                    </div>
+
+                    <Link
+                      href={`/entrevista/${s.session_token}`}
+                      target="_blank"
+                      className="shrink-0 rounded-md border border-kwiq-border bg-kwiq-bg/60 px-3 py-1.5 text-xs text-kwiq-text hover:bg-kwiq-bg"
+                    >
+                      {isDone ? "Ver" : isPaused ? "Ver pausada" : "Ver en vivo"}{" "}
+                      →
+                    </Link>
                   </div>
-                  <div className="text-xs text-kwiq-muted">
-                    Sección: {s.section ?? "—"} · Actualizada{" "}
-                    {new Date(s.updated_at as string).toLocaleString("es-AR")}
-                  </div>
-                </div>
-                <SessionStatusBadge status={s.status as string} />
-              </li>
-            ))}
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
@@ -360,6 +451,62 @@ export default async function ProjectDetailPage({ params }: Props) {
       </div>
     </div>
   );
+}
+
+/**
+ * Texto humano del timeline de una sesión de entrevista. Arma una línea
+ * concisa con cuándo se creó + última actividad relevante (pausada /
+ * retomada / completada). Sirve para que el admin vea de un vistazo si
+ * la sesión está activa o quieta hace tiempo.
+ */
+function formatTimeline(s: {
+  created_at: unknown;
+  updated_at: unknown;
+  paused_at: unknown;
+  resumed_at: unknown;
+  completed_at: unknown;
+  status: unknown;
+}): string {
+  const created = s.created_at ? new Date(s.created_at as string) : null;
+  const updated = s.updated_at ? new Date(s.updated_at as string) : null;
+  const paused = s.paused_at ? new Date(s.paused_at as string) : null;
+  const completed = s.completed_at ? new Date(s.completed_at as string) : null;
+  const status = s.status as string;
+
+  const fmt = (d: Date) =>
+    d.toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" });
+
+  const parts: string[] = [];
+  if (created) parts.push(`Iniciada ${fmt(created)}`);
+
+  if (status === "completed" && completed) {
+    parts.push(`completada ${fmt(completed)}`);
+  } else if (status === "paused" && paused) {
+    parts.push(`pausada ${fmt(paused)} (${relativeTime(paused)})`);
+  } else if (updated) {
+    parts.push(`última actividad ${fmt(updated)} (${relativeTime(updated)})`);
+  }
+
+  return parts.join(" · ");
+}
+
+/**
+ * Tiempo relativo legible: "hace 5 min", "hace 2 h", "hace 3 días", etc.
+ * Útil para que el admin sepa de un vistazo si el cliente está trabajando
+ * en este momento o lo dejó tirado hace días.
+ */
+function relativeTime(d: Date): string {
+  const diffMs = Date.now() - d.getTime();
+  const sec = Math.floor(diffMs / 1000);
+  if (sec < 60) return "hace segundos";
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `hace ${min} min`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `hace ${hr} h`;
+  const days = Math.floor(hr / 24);
+  if (days < 30) return `hace ${days} día${days > 1 ? "s" : ""}`;
+  const months = Math.floor(days / 30);
+  return `hace ${months} mes${months > 1 ? "es" : ""}`;
 }
 
 function InfoCard({
