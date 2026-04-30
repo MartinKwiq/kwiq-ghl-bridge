@@ -21,6 +21,10 @@ import type {
 } from "./types";
 import { getLocationContext } from "./location-client";
 import { stepCustomValues } from "./steps/custom-values";
+import { stepTags } from "./steps/tags";
+import { stepCustomFields } from "./steps/custom-fields";
+import { stepPipelines } from "./steps/pipelines";
+import { stepUsers } from "./steps/users";
 
 export interface StartRunOptions {
   project_id: string;
@@ -122,14 +126,21 @@ export async function runProvisioner(
     mode: opts.mode,
   };
 
-  // 5. Correr steps en orden. Por ahora solo custom_values; los demás se
-  //    van cableando en commits siguientes. El orden que documenta
-  //    PROVISIONING.md §3.3 es: tags → custom fields → custom values →
-  //    pipelines → calendars → users → AI agent → channels.
+  // 5. Correr steps en orden canónico (PROVISIONING.md §3.3):
+  //    tags → custom_fields → custom_values → pipelines → users →
+  //    [calendars, ai_agent — TODO].
+  //
+  //    Si un step falla, NO abortamos el run — seguimos con los demás
+  //    porque cada step es independiente. El status final agregado refleja
+  //    si hubo errores parciales (`partial`) o totales (`failed`).
   const step_results: StepResult[] = [];
   try {
+    step_results.push(await stepTags(ctx, input, run_id));
+    step_results.push(await stepCustomFields(ctx, input, run_id));
     step_results.push(await stepCustomValues(ctx, input, run_id));
-    // TODO: tags, custom_fields, pipelines, calendars, users, ai_agent.
+    step_results.push(await stepPipelines(ctx, input, run_id));
+    step_results.push(await stepUsers(ctx, input, run_id));
+    // TODO: calendars, ai_agent (Conversation AI prompt + KB).
   } catch (err) {
     return finalizeRun(run_id, {
       started_at,
