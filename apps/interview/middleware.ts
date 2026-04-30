@@ -65,8 +65,13 @@ export async function middleware(req: NextRequest) {
 
   const isAdminRoute = pathname.startsWith("/admin");
   const isLoginPage = pathname === "/admin/login";
+  const isAdminAcceptInvitePage = pathname === "/admin/accept-invite";
+  // Rutas públicas dentro de /admin/* — no requieren sesión todavía. El
+  // accept-invite recibe al admin después del magic link y le permite
+  // establecer su primera contraseña.
+  const isPublicAdminRoute = isLoginPage || isAdminAcceptInvitePage;
 
-  if (isAdminRoute && !isLoginPage) {
+  if (isAdminRoute && !isPublicAdminRoute) {
     if (!user) {
       const loginUrl = new URL("/admin/login", req.url);
       loginUrl.searchParams.set("next", pathname);
