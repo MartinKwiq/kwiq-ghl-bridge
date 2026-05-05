@@ -62,6 +62,14 @@ export interface QuestionDef {
   };
   /** Texto que Gemini usa para reformular y guiar al cliente. */
   guidance?: string;
+  /**
+   * `true` (default): pregunta crítica para el provisioning — el LLM la cubre
+   *   sí o sí antes de cerrar la sección.
+   * `false`: pregunta contextual u opcional. El LLM la salta por defecto y
+   *   solo la cubre si el cliente quiere profundizar. Esto acorta la
+   *   entrevista típica de ~150 preguntas a ~50 (~20 min vs. ~90).
+   */
+  essential?: boolean;
 }
 
 export interface SectionDef {
@@ -96,27 +104,27 @@ export const INTERVIEW: { version: string; sections: SectionDef[] } = {
       description:
         "Ayúdenos a entender más sobre la situación actual de su negocio y la forma en que se administra hoy.",
       questions: [
+        // ── Esenciales: capturan la operación core para configurar el agente y los workflows.
         { id: "staff_atencion_dedicado", label: "¿Se cuenta con personal dedicado exclusivamente a la atención al cliente?", type: "text_long", output: { target: "context_note", key: "staff_atencion_dedicado" } },
         { id: "capacidad_max_dia", label: "¿Cuál es la capacidad máxima de citas que se pueden tener por día?", type: "number", output: { target: "context_note", key: "capacidad_max_dia" } },
-        { id: "citas_simultaneas", label: "¿Cuántas citas o servicios pueden gestionarse en simultáneo?", type: "number", output: { target: "context_note", key: "citas_simultaneas" } },
         { id: "herramientas_actuales", label: "¿Qué herramientas o software utilizan actualmente para gestionar citas o clientes?", type: "text_long", output: { target: "context_note", key: "herramientas_actuales" } },
-        { id: "pct_digital", label: "¿Qué porcentaje de sus clientes agenda citas por medios digitales?", type: "number", output: { target: "context_note", key: "pct_digital" } },
-        { id: "pct_recurrentes", label: "¿Qué porcentaje de sus clientes es recurrente?", type: "number", output: { target: "context_note", key: "pct_recurrentes" } },
-        { id: "servicios_subsecuentes", label: "¿Sus clientes agendan típicamente servicios subsecuentes?", type: "text_long", output: { target: "context_note", key: "servicios_subsecuentes" } },
-        { id: "proceso_facturacion", label: "¿Cómo maneja los procesos de facturación y cobranza?", type: "text_long", output: { target: "context_note", key: "proceso_facturacion" } },
-        { id: "manejo_cancelaciones", label: "¿Cómo se manejan las cancelaciones de citas?", type: "text_long", output: { target: "context_note", key: "manejo_cancelaciones" } },
-        { id: "manejo_reprogramaciones", label: "¿Cómo se manejan las reprogramaciones de citas?", type: "text_long", output: { target: "context_note", key: "manejo_reprogramaciones" } },
-        { id: "manejo_noshows", label: "¿Cómo se manejan las citas que no se presentan?", type: "text_long", output: { target: "context_note", key: "manejo_noshows" } },
+        { id: "manejo_cancelaciones", label: "¿Cómo se manejan las cancelaciones, reprogramaciones y no-shows?", type: "text_long", output: { target: "context_note", key: "manejo_cancelaciones" } },
         { id: "temporadas_alta_demanda", label: "¿Tienen temporadas de mayor demanda? ¿Cuáles son?", type: "text_long", output: { target: "context_note", key: "temporadas_alta_demanda" } },
-        { id: "frecuencia_capacitacion", label: "¿Qué tan frecuente es la capacitación de su personal de atención al cliente?", type: "text_long", output: { target: "context_note", key: "frecuencia_capacitacion" } },
-        { id: "tiene_db_clientes", label: "¿Tienen una base de datos de clientes con email, nombre, teléfono y valor de compra?", type: "text_long", output: { target: "context_note", key: "tiene_db_clientes" } },
-        { id: "mejores_clientes", label: "¿Tiene identificados quiénes son sus mejores clientes? ¿Qué los hace diferentes?", type: "text_long", output: { target: "context_note", key: "mejores_clientes" } },
-        { id: "incentivos_vendedores", label: "¿Cuentan con incentivos o modelos de compensación para sus vendedores/agentes?", type: "text_long", output: { target: "context_note", key: "incentivos_vendedores" } },
-        { id: "adopcion_software_staff", label: "¿Qué tan probable es que su equipo pueda aprender a usar una nueva plataforma?", type: "text_long", output: { target: "context_note", key: "adopcion_software_staff" } },
-        { id: "programa_fidelidad", label: "¿Tiene algún programa de fidelidad o recompensas para clientes recurrentes?", type: "text_long", output: { target: "context_note", key: "programa_fidelidad" } },
-        { id: "incentivar_retorno", label: "¿Cómo incentivan a sus clientes a regresar?", type: "text_long", output: { target: "context_note", key: "incentivar_retorno" } },
-        { id: "incentivar_referidos", label: "¿Cómo incentivan a sus clientes y empleados a recomendar sus servicios?", type: "text_long", output: { target: "context_note", key: "incentivar_referidos" } },
-        { id: "incentivos_partners", label: "¿Sus proveedores y socios tienen incentivo de promover sus servicios? ¿Cuáles?", type: "text_long", output: { target: "context_note", key: "incentivos_partners" } },
+        // ── Opcionales: el LLM las saltea por defecto. Si el cliente quiere profundizar, las cubre.
+        { id: "citas_simultaneas", label: "¿Cuántas citas o servicios pueden gestionarse en simultáneo?", type: "number", essential: false, output: { target: "context_note", key: "citas_simultaneas" } },
+        { id: "pct_digital", label: "¿Qué porcentaje de sus clientes agenda citas por medios digitales?", type: "number", essential: false, output: { target: "context_note", key: "pct_digital" } },
+        { id: "pct_recurrentes", label: "¿Qué porcentaje de sus clientes es recurrente?", type: "number", essential: false, output: { target: "context_note", key: "pct_recurrentes" } },
+        { id: "proceso_facturacion", label: "¿Cómo maneja los procesos de facturación y cobranza?", type: "text_long", essential: false, output: { target: "context_note", key: "proceso_facturacion" } },
+        { id: "tiene_db_clientes", label: "¿Tienen una base de datos de clientes con email, nombre, teléfono y valor de compra?", type: "text_long", essential: false, output: { target: "context_note", key: "tiene_db_clientes" } },
+        { id: "mejores_clientes", label: "¿Tiene identificados quiénes son sus mejores clientes? ¿Qué los hace diferentes?", type: "text_long", essential: false, output: { target: "context_note", key: "mejores_clientes" } },
+        { id: "adopcion_software_staff", label: "¿Qué tan probable es que su equipo pueda aprender a usar una nueva plataforma?", type: "text_long", essential: false, output: { target: "context_note", key: "adopcion_software_staff" } },
+        { id: "programa_fidelidad", label: "¿Tiene algún programa de fidelidad o recompensas para clientes recurrentes?", type: "text_long", essential: false, output: { target: "context_note", key: "programa_fidelidad" } },
+        { id: "incentivar_retorno", label: "¿Cómo incentivan a sus clientes a regresar?", type: "text_long", essential: false, output: { target: "context_note", key: "incentivar_retorno" } },
+        { id: "incentivar_referidos", label: "¿Cómo incentivan a sus clientes y empleados a recomendar sus servicios?", type: "text_long", essential: false, output: { target: "context_note", key: "incentivar_referidos" } },
+        { id: "incentivos_vendedores", label: "¿Cuentan con incentivos o modelos de compensación para sus vendedores/agentes?", type: "text_long", essential: false, output: { target: "context_note", key: "incentivos_vendedores" } },
+        { id: "incentivos_partners", label: "¿Sus proveedores y socios tienen incentivo de promover sus servicios? ¿Cuáles?", type: "text_long", essential: false, output: { target: "context_note", key: "incentivos_partners" } },
+        { id: "frecuencia_capacitacion", label: "¿Qué tan frecuente es la capacitación de su personal de atención al cliente?", type: "text_long", essential: false, output: { target: "context_note", key: "frecuencia_capacitacion" } },
+        { id: "servicios_subsecuentes", label: "¿Sus clientes agendan típicamente servicios subsecuentes?", type: "text_long", essential: false, output: { target: "context_note", key: "servicios_subsecuentes" } },
       ],
     },
     {
@@ -194,11 +202,11 @@ export const INTERVIEW: { version: string; sections: SectionDef[] } = {
         { id: "nombre_ia", label: "Nombre de la IA (cómo se llamará el asistente)", type: "text_short", output: { target: "ghl_custom_value", key: "nombre_de_la_ia", folder: "Inteligencia Artificial" } },
         { id: "aviso_privacidad", label: "Aviso de privacidad (URL o texto)", type: "text_long", output: { target: "ghl_custom_value", key: "aviso_de_privacidad", folder: "Legal" } },
         { id: "terminos_condiciones", label: "Términos y Condiciones (URL o texto)", type: "text_long", output: { target: "ghl_custom_value", key: "terminos_y_condiciones", folder: "Legal" } },
-        { id: "doctoralia", label: "Doctoralia (URL)", type: "url", required: false, output: { target: "ghl_custom_value", key: "doctoralia", folder: "Redes Sociales" } },
-        { id: "facebook", label: "Facebook (URL)", type: "url", required: false, output: { target: "ghl_custom_value", key: "facebook", folder: "Redes Sociales" } },
-        { id: "instagram", label: "Instagram (URL)", type: "url", required: false, output: { target: "ghl_custom_value", key: "instagram", folder: "Redes Sociales" } },
-        { id: "whatsapp_business", label: "WhatsApp Business (link)", type: "url", required: false, output: { target: "ghl_custom_value", key: "whatsapp_business", folder: "Redes Sociales" } },
-        { id: "tiktok", label: "TikTok (URL)", type: "url", required: false, output: { target: "ghl_custom_value", key: "tiktok", folder: "Redes Sociales" } },
+        { id: "doctoralia", label: "Doctoralia (URL)", type: "url", required: false, essential: false, output: { target: "ghl_custom_value", key: "doctoralia", folder: "Redes Sociales" } },
+        { id: "facebook", label: "Facebook (URL)", type: "url", required: false, essential: false, output: { target: "ghl_custom_value", key: "facebook", folder: "Redes Sociales" } },
+        { id: "instagram", label: "Instagram (URL)", type: "url", required: false, essential: false, output: { target: "ghl_custom_value", key: "instagram", folder: "Redes Sociales" } },
+        { id: "whatsapp_business", label: "WhatsApp Business (link)", type: "url", required: false, essential: false, output: { target: "ghl_custom_value", key: "whatsapp_business", folder: "Redes Sociales" } },
+        { id: "tiktok", label: "TikTok (URL)", type: "url", required: false, essential: false, output: { target: "ghl_custom_value", key: "tiktok", folder: "Redes Sociales" } },
       ],
     },
     {
@@ -361,17 +369,17 @@ export const INTERVIEW: { version: string; sections: SectionDef[] } = {
         { id: "cal_horario_mie", label: "Horario disponible miércoles", type: "text_short", output: { target: "ghl_calendar", key: "weeklyAvailability.Wed" } },
         { id: "cal_horario_jue", label: "Horario disponible jueves", type: "text_short", output: { target: "ghl_calendar", key: "weeklyAvailability.Thu" } },
         { id: "cal_horario_vie", label: "Horario disponible viernes", type: "text_short", output: { target: "ghl_calendar", key: "weeklyAvailability.Fri" } },
-        { id: "cal_horario_sab", label: "Horario disponible sábado", type: "text_short", required: false, output: { target: "ghl_calendar", key: "weeklyAvailability.Sat" } },
-        { id: "cal_horario_dom", label: "Horario disponible domingo", type: "text_short", required: false, output: { target: "ghl_calendar", key: "weeklyAvailability.Sun" } },
+        { id: "cal_horario_sab", label: "Horario disponible sábado", type: "text_short", required: false, essential: false, output: { target: "ghl_calendar", key: "weeklyAvailability.Sat" } },
+        { id: "cal_horario_dom", label: "Horario disponible domingo", type: "text_short", required: false, essential: false, output: { target: "ghl_calendar", key: "weeklyAvailability.Sun" } },
         { id: "cal_timezone", label: "Zona horaria", type: "text_short", output: { target: "ghl_calendar", key: "timezone" } },
-        { id: "cal_exclusiones", label: "Exclusiones / fuera de horario (días feriados, cierres)", type: "text_long", required: false, output: { target: "ghl_calendar", key: "dateSpecificHours" } },
-        { id: "cal_ocupado_pct", label: "Porcentaje de bloque buffer (muéstrate ocupado %)", type: "number", required: false, output: { target: "ghl_calendar", key: "busy_buffer_pct" } },
+        { id: "cal_exclusiones", label: "Exclusiones / fuera de horario (días feriados, cierres)", type: "text_long", required: false, essential: false, output: { target: "ghl_calendar", key: "dateSpecificHours" } },
+        { id: "cal_ocupado_pct", label: "Porcentaje de bloque buffer (muéstrate ocupado %)", type: "number", required: false, essential: false, output: { target: "ghl_calendar", key: "busy_buffer_pct" } },
         { id: "cal_duracion", label: "Duración de la reunión (minutos)", type: "number", output: { target: "ghl_calendar", key: "slotDuration" } },
-        { id: "cal_aviso_minimo", label: "Aviso mínimo de programación", type: "text_short", output: { target: "ghl_calendar", key: "minSchedulingNotice" } },
+        { id: "cal_aviso_minimo", label: "Aviso mínimo de programación", type: "text_short", essential: false, output: { target: "ghl_calendar", key: "minSchedulingNotice" } },
         { id: "cal_max_dia", label: "Reservas máximas por día", type: "number", output: { target: "ghl_calendar", key: "maxBookingsPerDay" } },
-        { id: "cal_max_slot", label: "Máximo de reservas por franja", type: "number", output: { target: "ghl_calendar", key: "appointmentsPerSlot" } },
-        { id: "cal_buffer_prep", label: "Margen de preparación (minutos)", type: "number", required: false, output: { target: "ghl_calendar", key: "preBufferTime" } },
-        { id: "cal_tiempo_cancelacion", label: "Tiempo permitido para cancelar/reprogramar", type: "text_short", output: { target: "ghl_calendar", key: "cancellation_window" } },
+        { id: "cal_max_slot", label: "Máximo de reservas por franja", type: "number", essential: false, output: { target: "ghl_calendar", key: "appointmentsPerSlot" } },
+        { id: "cal_buffer_prep", label: "Margen de preparación (minutos)", type: "number", required: false, essential: false, output: { target: "ghl_calendar", key: "preBufferTime" } },
+        { id: "cal_tiempo_cancelacion", label: "Tiempo permitido para cancelar/reprogramar", type: "text_short", essential: false, output: { target: "ghl_calendar", key: "cancellation_window" } },
       ],
     },
     {
@@ -399,10 +407,10 @@ export const INTERVIEW: { version: string; sections: SectionDef[] } = {
       questions: [
         { id: "stage_nombre", label: "Nombre de la etapa", type: "text_short", output: { target: "ghl_pipeline_stage", key: "name" } },
         { id: "stage_descripcion", label: "Descripción de la etapa (cuándo entra un contacto acá)", type: "text_long", output: { target: "ghl_pipeline_stage", key: "description" } },
-        { id: "stage_servicios", label: "Servicios asociados a esta etapa (si aplica)", type: "text_long", required: false, output: { target: "ghl_pipeline_stage", key: "services_ref" } },
-        { id: "stage_notif_email", label: "¿Notificar por correo al entrar a esta etapa?", type: "boolean", output: { target: "ghl_pipeline_stage", key: "notify_email" } },
-        { id: "stage_notif_wa", label: "¿Notificar por WhatsApp al entrar?", type: "boolean", output: { target: "ghl_pipeline_stage", key: "notify_whatsapp" } },
-        { id: "stage_seguimiento", label: "Seguimiento personalizado en esta etapa", type: "text_long", required: false, output: { target: "ghl_pipeline_stage", key: "custom_followup" } },
+        { id: "stage_servicios", label: "Servicios asociados a esta etapa (si aplica)", type: "text_long", required: false, essential: false, output: { target: "ghl_pipeline_stage", key: "services_ref" } },
+        { id: "stage_notif_email", label: "¿Notificar por correo al entrar a esta etapa?", type: "boolean", essential: false, output: { target: "ghl_pipeline_stage", key: "notify_email" } },
+        { id: "stage_notif_wa", label: "¿Notificar por WhatsApp al entrar?", type: "boolean", essential: false, output: { target: "ghl_pipeline_stage", key: "notify_whatsapp" } },
+        { id: "stage_seguimiento", label: "Seguimiento personalizado en esta etapa", type: "text_long", required: false, essential: false, output: { target: "ghl_pipeline_stage", key: "custom_followup" } },
       ],
     },
     {
@@ -431,9 +439,9 @@ export const INTERVIEW: { version: string; sections: SectionDef[] } = {
         { id: "handoff_usuario", label: "Usuario asignado (de la sección Personal)", type: "text_short", output: { target: "ghl_workflow_handoff", key: "assignedUserId" } },
         { id: "handoff_activador", label: "Activador (ej. palabra clave, tag, intent)", type: "text_long", output: { target: "ghl_workflow_handoff", key: "trigger" } },
         { id: "handoff_notificacion", label: "Mensaje de notificación al asignado", type: "text_long", output: { target: "ghl_workflow_handoff", key: "notification_text" } },
-        { id: "handoff_canal_app", label: "¿Notificar dentro de la app?", type: "boolean", output: { target: "ghl_workflow_handoff", key: "notify_app" } },
-        { id: "handoff_canal_email", label: "¿Notificar por correo?", type: "boolean", output: { target: "ghl_workflow_handoff", key: "notify_email" } },
-        { id: "handoff_canal_wa", label: "¿Notificar por WhatsApp?", type: "boolean", output: { target: "ghl_workflow_handoff", key: "notify_whatsapp" } },
+        { id: "handoff_canal_app", label: "¿Notificar dentro de la app?", type: "boolean", essential: false, output: { target: "ghl_workflow_handoff", key: "notify_app" } },
+        { id: "handoff_canal_email", label: "¿Notificar por correo?", type: "boolean", essential: false, output: { target: "ghl_workflow_handoff", key: "notify_email" } },
+        { id: "handoff_canal_wa", label: "¿Notificar por WhatsApp?", type: "boolean", essential: false, output: { target: "ghl_workflow_handoff", key: "notify_whatsapp" } },
       ],
     },
     {
