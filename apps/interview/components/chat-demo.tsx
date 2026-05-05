@@ -158,8 +158,9 @@ export function ChatDemo() {
           <div className="mx-auto flex max-w-3xl flex-col gap-4">
             <div className="self-start rounded-xl border border-kwiq-accent/30 bg-kwiq-accent/10 px-3 py-2 text-xs text-kwiq-text">
               Estás en el modo demo de Kwiq. Las respuestas son fijas, pero la
-              UX refleja cómo se siente la entrevista real. Para la entrevista
-              completa, andá a <code className="font-mono">/entrevista/nueva</code>.
+              UX refleja cómo se siente la entrevista real. Para hacer la
+              entrevista real necesitás un link de invitación de Kwiq —
+              escribinos a <code className="font-mono">hola@kwiq.io</code>.
             </div>
             {messages.map((m, i) => (
               <Bubble key={i} message={m} />

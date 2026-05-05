@@ -44,12 +44,23 @@ export default function HomePage() {
           ))}
         </ul>
 
+        {/*
+          Importante: la entrevista NO se puede iniciar desde la home.
+          El único camino válido es la invitación por correo (magic link)
+          que el equipo Kwiq le envía al cliente. Esa invitación vincula
+          la sesión al `kwiq_project` correcto y al usuario logueado, así
+          que nada queda huérfano.
+
+          Si un cliente aterriza acá por accidente, el botón "Soy cliente
+          Kwiq" lo lleva al login — y desde ahí va a poder retomar su
+          entrevista en /interview.
+         */}
         <div className="mt-8 flex flex-wrap items-center gap-3">
           <Link
-            href="/entrevista/nueva"
+            href="/interview/login"
             className="inline-flex items-center rounded-lg bg-kwiq-accent px-4 py-2 font-medium text-kwiq-bg transition hover:bg-kwiq-accentHover"
           >
-            Empezar entrevista
+            Soy cliente Kwiq · ingresar
           </Link>
           <Link
             href="/demo"
@@ -62,6 +73,14 @@ export default function HomePage() {
             Schema versión <code className="font-mono">{INTERVIEW.version}</code>
           </span>
         </div>
+
+        <p className="mt-4 text-xs text-kwiq-muted">
+          ¿No recibiste el correo con tu link de acceso? Escribinos a{" "}
+          <a href="mailto:hola@kwiq.io" className="underline hover:text-kwiq-text">
+            hola@kwiq.io
+          </a>
+          .
+        </p>
       </div>
 
       <footer className="mt-10 text-xs text-kwiq-muted">

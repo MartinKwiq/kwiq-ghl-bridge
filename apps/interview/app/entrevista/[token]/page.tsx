@@ -1,33 +1,85 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { Chat, type ChatSection } from "@/components/chat";
 import { getSectionById, sectionOrder } from "@/lib/interview-schema";
-import { supabaseAdmin } from "@/lib/supabase/server";
+import { supabaseAdmin, supabaseServer } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * /entrevista/[token]
+ *
+ * Pantalla del chat. La usa el cliente logueado para conversar con el
+ * asistente Kwiq. Reglas de acceso:
+ *
+ *  1) El usuario debe estar logueado. Si no, redirect a /interview/login
+ *     conservando el destino para volver acá después del login.
+ *
+ *  2) La sesión debe estar vinculada a `user_id` y/o `project_id`. Las
+ *     sesiones del flow legacy anónimo (sin user_id ni project_id) ya no
+ *     se pueden abrir — están bloqueadas. Si querés rescatar una, usá un
+ *     UPDATE en DB para asignarle project_id (como hicimos con la de
+ *     Porfirio para Axioma).
+ *
+ *  3) El usuario logueado debe ser:
+ *       - el dueño de la sesión (`session.user_id == auth.uid()`), o
+ *       - un admin Kwiq (puede revisar cualquier sesión).
+ *
+ *     Si no cumple ninguno de los dos, mostramos 404 (mejor que 403 para
+ *     no filtrar la existencia del token).
+ */
 export default async function InterviewPage({
   params,
 }: {
   params: Promise<{ token: string }>;
 }) {
   const { token } = await params;
-  const sb = supabaseAdmin();
 
-  const { data: session } = await sb
+  // 1) Auth.
+  const sb = await supabaseServer();
+  const { data: auth } = await sb.auth.getUser();
+  if (!auth?.user) {
+    const next = encodeURIComponent(`/entrevista/${token}`);
+    redirect(`/interview/login?next=${next}`);
+  }
+
+  const admin = supabaseAdmin();
+
+  const { data: session } = await admin
     .from("interview_sessions")
     .select(
-      "id, session_token, current_section_id, status, completed_section_ids",
+      "id, session_token, current_section_id, status, completed_section_ids, user_id, project_id",
     )
     .eq("session_token", token)
-    .single();
+    .maybeSingle();
 
   if (!session) notFound();
+
+  // 2) Sesiones huérfanas (legacy anónimo) → bloqueadas.
+  if (!session.user_id && !session.project_id) {
+    notFound();
+  }
+
+  // 3) Owner check (con bypass para admins Kwiq).
+  const isOwner = session.user_id === auth.user.id;
+  let isAdmin = false;
+  if (!isOwner) {
+    const { data: adminRow } = await admin
+      .from("kwiq_admins")
+      .select("user_id")
+      .eq("user_id", auth.user.id)
+      .maybeSingle();
+    isAdmin = !!adminRow;
+  }
+
+  if (!isOwner && !isAdmin) {
+    notFound();
+  }
 
   // Auto-resume: si la sesión estaba pausada y el cliente llegó al chat,
   // la reactivamos antes de renderizar. No bloqueamos si falla — el engine
   // acepta turnos sobre sesiones paused de todas formas.
   if (session.status === "paused") {
-    await sb
+    await admin
       .from("interview_sessions")
       .update({
         status: "in_progress",
@@ -46,7 +98,7 @@ export default async function InterviewPage({
     order: s.order,
   }));
 
-  const { data: turns } = await sb
+  const { data: turns } = await admin
     .from("interview_turns")
     .select("turn_index, role, content, section_id, meta")
     .eq("session_id", session.id)
