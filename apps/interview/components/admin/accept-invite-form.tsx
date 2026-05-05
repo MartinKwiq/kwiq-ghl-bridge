@@ -119,6 +119,16 @@ export function AdminAcceptInviteForm() {
           error?: string;
           detail?: string;
         };
+        if (body.error === "invite_expired") {
+          // Invitación caducada (>48h): la sesión ya quedó cerrada en
+          // server, no tiene sentido devolver al form.
+          setStage("error");
+          setError(
+            body.detail ??
+              "Tu invitación expiró. Pedile a otro admin que te reenvíe.",
+          );
+          return;
+        }
         setStage("form");
         if (body.error === "not_authenticated") {
           setError("Tu sesión expiró. Volvé a abrir el link del mail.");

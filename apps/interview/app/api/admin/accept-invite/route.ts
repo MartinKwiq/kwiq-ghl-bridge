@@ -10,6 +10,13 @@ const BodySchema = z.object({
 });
 
 /**
+ * Tiempo máximo que un magic link de invitación a admin Kwiq sigue siendo
+ * válido para fijar la contraseña inicial. Doble layer de seguridad sobre
+ * el OTP_EXPIRY de Supabase Auth.
+ */
+const INVITE_VALID_HOURS = 48;
+
+/**
  * POST /api/admin/accept-invite
  *
  * Se llama desde la página `/admin/accept-invite` después de que el admin
@@ -20,17 +27,11 @@ const BodySchema = z.object({
  *  2. Verifica que el email termine en @kwiq.io (defensa en profundidad —
  *     el invite original ya lo valida, pero acá lo re-chequeamos).
  *  3. Verifica que el user_id esté en `kwiq_admins` (es admin, no cliente).
- *  4. Setea la password vía `auth.admin.updateUserById` (usamos admin para
- *     evitar pedirle la actual).
- *
- * Devuelve `{ ok }` para que el front redirija a /admin.
- *
- * Es la versión "admin" del endpoint equivalente para clientes en
- * /api/interview/accept-invite. Difiere en:
- *  - Valida dominio @kwiq.io.
- *  - Verifica que esté en `kwiq_admins` (no `kwiq_interview_users`).
- *  - Mínimo de password 12 chars (el de cliente es 8) — alineado con la
- *    policy de Supabase Auth que tenemos puesta para Kwiq.
+ *  4. Verifica que la invitación no tenga más de 48 horas. La fuente de
+ *     verdad es `auth.users.invited_at` (lo escribe Supabase al disparar
+ *     `auth.admin.inviteUserByEmail`). Si pasaron más de 48h y todavía no
+ *     había seteado contraseña, bloqueamos y pedimos reinvite.
+ *  5. Setea la password vía `auth.admin.updateUserById`.
  */
 export async function POST(req: Request) {
   let parsed;
@@ -76,6 +77,33 @@ export async function POST(req: Request) {
     // No es admin. Cerramos la sesión.
     await sb.auth.signOut();
     return NextResponse.json({ error: "not_admin" }, { status: 403 });
+  }
+
+  // Validación de antigüedad del invite. Solo aplica si es la primera vez
+  // que setea password — si ya tenía una y volvió a usar el flow para
+  // resetearla, lo dejamos pasar.
+  // `auth.users.invited_at` lo escribe Supabase cuando llamamos
+  // inviteUserByEmail; `last_sign_in_at` queda NULL hasta el primer login.
+  const { data: authUser } = await admin.auth.admin.getUserById(auth.user.id);
+  if (authUser?.user) {
+    const invitedAt = authUser.user.invited_at;
+    const lastSignIn = authUser.user.last_sign_in_at;
+    const isFirstUse = !lastSignIn;
+    if (isFirstUse && invitedAt) {
+      const ageHours = (Date.now() - new Date(invitedAt).getTime()) / 3_600_000;
+      if (ageHours > INVITE_VALID_HOURS) {
+        await sb.auth.signOut();
+        return NextResponse.json(
+          {
+            error: "invite_expired",
+            detail: `La invitación tiene más de ${INVITE_VALID_HOURS}h. Pedile a otro admin que te reenvíe.`,
+            invited_at: invitedAt,
+            age_hours: Math.round(ageHours),
+          },
+          { status: 410 },
+        );
+      }
+    }
   }
 
   // Seteamos la password vía admin. Esto permite al admin loguearse después

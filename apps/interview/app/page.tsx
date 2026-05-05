@@ -1,17 +1,72 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { sectionOrder, INTERVIEW } from "@/lib/interview-schema";
 import { BRAND } from "@/lib/brand";
 import { Logo } from "@/components/logo";
+import { supabaseAdmin, supabaseServer } from "@/lib/supabase/server";
+
+export const dynamic = "force-dynamic";
 
 /**
- * Landing / punto de entrada.
+ * Home — router de autenticación.
  *
- * Muestra el logo de Kwiq, copy de bienvenida y los dos caminos:
- *  - Empezar entrevista real (requiere Gemini + Supabase configurados).
- *  - Probar la demo (0 configuración, guion determinístico).
+ * Comportamiento:
+ *  1) Si el visitante NO tiene sesión Supabase → mostramos la landing
+ *     pública con un único CTA: "Soy cliente Kwiq · ingresar". No hay
+ *     ningún botón que arranque entrevista directa, porque el único
+ *     camino válido es la invitación por correo (que aterriza en
+ *     /interview/accept-invite y crea cookie de sesión).
+ *
+ *  2) Si el visitante TIENE sesión y es admin Kwiq (@kwiq.io en
+ *     kwiq_admins) → redirect a /admin (dashboard interno).
+ *
+ *  3) Si el visitante TIENE sesión y es cliente (kwiq_interview_users)
+ *     → redirect a /interview (panel cliente con sus entrevistas).
+ *
+ *  4) Si el visitante tiene sesión pero no es ninguno de los dos
+ *     (caso raro: cuenta huérfana sin rol asignado) → la dejamos en
+ *     la landing pública con un mensaje de "tu cuenta está sin
+ *     proyecto asignado, escribinos".
+ *
+ * Diseñado así porque el usuario reportó que poniendo la URL raíz
+ * algunos clientes podían terminar dentro de la entrevista sin
+ * pasar por login. Ahora siempre se pasa por el router de auth.
  */
-export default function HomePage() {
+export default async function HomePage() {
   const sections = sectionOrder();
+
+  const sb = await supabaseServer();
+  const { data: auth } = await sb.auth.getUser();
+
+  if (auth?.user) {
+    const admin = supabaseAdmin();
+
+    // Admin Kwiq tiene prioridad — si alguien está en ambas tablas, mandamos
+    // al panel admin (caso real: el equipo testeando con su mismo email).
+    const { data: adminRow } = await admin
+      .from("kwiq_admins")
+      .select("user_id")
+      .eq("user_id", auth.user.id)
+      .maybeSingle();
+
+    if (adminRow) {
+      redirect("/admin");
+    }
+
+    const { data: clientRow } = await admin
+      .from("kwiq_interview_users")
+      .select("user_id")
+      .eq("user_id", auth.user.id)
+      .maybeSingle();
+
+    if (clientRow) {
+      redirect("/interview");
+    }
+
+    // Sesión válida pero sin rol — caemos a la landing con un aviso.
+  }
+
+  const sessionExistsButNoRole = !!auth?.user;
 
   return (
     <main className="mx-auto flex min-h-screen max-w-3xl flex-col items-center justify-center px-6 py-12">
@@ -44,30 +99,26 @@ export default function HomePage() {
           ))}
         </ul>
 
-        {/*
-          Importante: la entrevista NO se puede iniciar desde la home.
-          El único camino válido es la invitación por correo (magic link)
-          que el equipo Kwiq le envía al cliente. Esa invitación vincula
-          la sesión al `kwiq_project` correcto y al usuario logueado, así
-          que nada queda huérfano.
+        {sessionExistsButNoRole && (
+          <div className="mt-6 rounded-lg border border-kwiq-warn/40 bg-kwiq-warn/10 px-4 py-3 text-sm text-kwiq-text">
+            Estás logueado pero tu cuenta todavía no tiene proyecto asignado.
+            Escribinos a{" "}
+            <a
+              href="mailto:hola@kwiq.io"
+              className="underline hover:text-kwiq-warn"
+            >
+              hola@kwiq.io
+            </a>{" "}
+            y te lo asociamos.
+          </div>
+        )}
 
-          Si un cliente aterriza acá por accidente, el botón "Soy cliente
-          Kwiq" lo lleva al login — y desde ahí va a poder retomar su
-          entrevista en /interview.
-         */}
         <div className="mt-8 flex flex-wrap items-center gap-3">
           <Link
             href="/interview/login"
             className="inline-flex items-center rounded-lg bg-kwiq-accent px-4 py-2 font-medium text-kwiq-bg transition hover:bg-kwiq-accentHover"
           >
             Soy cliente Kwiq · ingresar
-          </Link>
-          <Link
-            href="/demo"
-            className="inline-flex items-center rounded-lg border border-kwiq-border bg-kwiq-bg/40 px-4 py-2 font-medium text-kwiq-text transition hover:bg-kwiq-bg/70"
-            title="Recorrido guiado, sin configuración previa"
-          >
-            Probar demo (sin configuración)
           </Link>
           <span className="text-xs text-kwiq-muted">
             Schema versión <code className="font-mono">{INTERVIEW.version}</code>

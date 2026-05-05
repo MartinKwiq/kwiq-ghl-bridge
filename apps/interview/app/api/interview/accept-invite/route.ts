@@ -10,6 +10,14 @@ const BodySchema = z.object({
 });
 
 /**
+ * Tiempo máximo que un magic link de invitación a cliente sigue siendo
+ * válido para fijar la contraseña inicial. Doble layer de seguridad sobre
+ * el OTP_EXPIRY de Supabase Auth — incluso si Supabase está mal
+ * configurado, nosotros bloqueamos invitaciones viejas acá.
+ */
+const INVITE_VALID_HOURS = 48;
+
+/**
  * POST /api/interview/accept-invite
  *
  * Se llama desde la página `/interview/accept-invite` después de que el
@@ -19,9 +27,14 @@ const BodySchema = z.object({
  *  1. Verifica que haya sesión activa (sino el magic link no se procesó bien).
  *  2. Verifica que el user_id esté en `kwiq_interview_users` (es un cliente,
  *     no un admin).
- *  3. Setea la password via `auth.admin.updateUserById` (usamos admin para
- *     evitar pedirle la actual).
- *  4. Marca `first_login_at` y `last_login_at` si corresponde.
+ *  3. Verifica que la invitación no tenga más de 48 horas.
+ *     - Si es el primer login (first_login_at == null) y `invited_at` está
+ *       más viejo que el límite → bloqueamos. El admin tiene que
+ *       reinvitarlo.
+ *     - Si ya hizo first_login antes (re-uso del flow para cambiar
+ *       contraseña), permitimos sin chequear edad.
+ *  4. Setea la password via `auth.admin.updateUserById`.
+ *  5. Marca `first_login_at` y `last_login_at`.
  *
  * Devuelve `{ ok, project_id }` para que el front redirija a la landing.
  */
@@ -44,7 +57,7 @@ export async function POST(req: Request) {
   // El user debe ser un cliente de entrevista, no un admin.
   const { data: client, error: clientErr } = await admin
     .from("kwiq_interview_users")
-    .select("user_id, project_id, first_login_at")
+    .select("user_id, project_id, first_login_at, invited_at")
     .eq("user_id", auth.user.id)
     .maybeSingle();
 
@@ -61,6 +74,25 @@ export async function POST(req: Request) {
       { error: "not_interview_user" },
       { status: 403 },
     );
+  }
+
+  // Validación de antigüedad del invite (solo en el PRIMER login).
+  if (!client.first_login_at && client.invited_at) {
+    const invitedMs = new Date(client.invited_at).getTime();
+    const ageHours = (Date.now() - invitedMs) / (1000 * 60 * 60);
+    if (ageHours > INVITE_VALID_HOURS) {
+      // Cerramos la sesión para no dejar cookie de un invite caducado.
+      await sb.auth.signOut();
+      return NextResponse.json(
+        {
+          error: "invite_expired",
+          detail: `La invitación tiene más de ${INVITE_VALID_HOURS}h. Pedile al equipo Kwiq que te envíe una nueva.`,
+          invited_at: client.invited_at,
+          age_hours: Math.round(ageHours),
+        },
+        { status: 410 },
+      );
+    }
   }
 
   // Seteamos la password via admin. Esto permite al cliente loguearse

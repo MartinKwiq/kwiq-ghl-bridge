@@ -101,6 +101,17 @@ export function AcceptInviteForm() {
           error?: string;
           detail?: string;
         };
+        if (body.error === "invite_expired") {
+          // 410: la invitación caducó. La sesión ya quedó cerrada en el
+          // server, así que mostramos error terminal (no form) para que
+          // pida re-invitación.
+          setStage("error");
+          setError(
+            body.detail ??
+              "Tu invitación expiró. Pedile al equipo Kwiq que te envíe una nueva.",
+          );
+          return;
+        }
         setStage("form");
         if (body.error === "not_authenticated") {
           setError("Tu sesión expiró. Volvé a abrir el link del mail.");
