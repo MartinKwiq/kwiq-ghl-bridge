@@ -20,6 +20,7 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 import { getSetting } from "@/lib/settings";
 import {
   createLocation,
+  createLocationAdmin,
   getAgencyContext,
   type AgencyResult,
   type CreateLocationInput,
@@ -35,6 +36,15 @@ export interface CreateLocationForProjectResult {
   missing?: string[];
   /** Status HTTP de GHL si status == "ghl_error". */
   ghl_status?: number;
+  /** Resultado de la creación del admin user dentro de la sub-cuenta.
+   *  Independiente del éxito de la location: si la sub-cuenta se creó pero
+   *  el admin falló, el flow sigue y avisa al admin Kwiq. */
+  admin_user?: {
+    status: "created" | "already_exists" | "skipped" | "error";
+    user_id?: string;
+    email?: string;
+    message?: string;
+  };
 }
 
 /**
@@ -176,8 +186,57 @@ export async function createLocationForProject(
     };
   }
 
+  // ─────────────────────────────────────────────────────────────────────
+  // Crear el admin user en la sub-cuenta nueva.
+  // El POST /locations/ solo crea un "prospect" con prospectInfo — eso NO
+  // le da login al cliente. Para que pueda entrar a app.gohighlevel.com con
+  // sus credenciales y administrar SU sub-cuenta, hay que crear un user
+  // admin separado vía POST /users/.
+  //
+  // GHL le manda email automático para setear su contraseña.
+  // ─────────────────────────────────────────────────────────────────────
+  let adminUser: CreateLocationForProjectResult["admin_user"];
+  try {
+    const adminRes = await createLocationAdmin(agency.ctx, {
+      locationId,
+      firstName: project.admin_first_name!,
+      lastName: project.admin_last_name!,
+      email: project.contact_email!,
+      phone: project.admin_phone ?? undefined,
+    });
+
+    if (adminRes.ok) {
+      adminUser = {
+        status: adminRes.reused ? "already_exists" : "created",
+        user_id: adminRes.data.id || undefined,
+        email: adminRes.data.email,
+      };
+    } else if (adminRes.reason === "http_error") {
+      adminUser = {
+        status: "error",
+        message: `POST /users/ falló con ${adminRes.status}: ${adminRes.message}`,
+      };
+    } else if (adminRes.reason === "network_error") {
+      adminUser = {
+        status: "error",
+        message: `Red caída al crear admin: ${adminRes.message}`,
+      };
+    } else {
+      adminUser = {
+        status: "error",
+        message: `Faltan ajustes: ${adminRes.missing.join(", ")}`,
+      };
+    }
+  } catch (err) {
+    adminUser = {
+      status: "error",
+      message: err instanceof Error ? err.message : String(err),
+    };
+  }
+
   return {
     status: "created",
     location_id: locationId,
+    admin_user: adminUser,
   };
 }

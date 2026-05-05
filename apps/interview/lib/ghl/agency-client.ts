@@ -282,6 +282,120 @@ export async function createLocation(
   return { ok: true, data: created };
 }
 
+/**
+ * Input para crear el user admin de una sub-cuenta recién creada. Es la
+ * persona humana del cliente que va a tener login propio en la sub-cuenta
+ * GHL — no se confunde con `prospectInfo` que solo crea un contacto.
+ *
+ * GHL le manda un email de "set password" automáticamente al crear el user.
+ */
+export interface CreateLocationAdminInput {
+  locationId: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone?: string;
+}
+
+/**
+ * POST /users/ con scope de sub-cuenta — crea un user admin para que el
+ * cliente humano pueda loguearse a app.gohighlevel.com con sus credenciales
+ * y administrar SU sub-cuenta.
+ *
+ * Sin este step, después de crear la location el cliente queda sin acceso
+ * a GHL (solo aparece como "prospect", no como user con login).
+ *
+ * Idempotente: si el email ya existe en la cuenta, GHL devuelve 409 — lo
+ * tratamos como `already_exists`, no como error.
+ *
+ * Scope requerido: `users.write`.
+ */
+export async function createLocationAdmin(
+  ctx: AgencyContext,
+  input: CreateLocationAdminInput,
+): Promise<
+  | { ok: true; data: { id: string; email: string }; reused: boolean }
+  | Exclude<AgencyResult<unknown>, { ok: true }>
+> {
+  const body: Record<string, unknown> = {
+    companyId: ctx.companyId,
+    locationIds: [input.locationId],
+    firstName: input.firstName,
+    lastName: input.lastName,
+    email: input.email,
+    phone: input.phone ?? "",
+    type: "account",
+    role: "admin",
+    // Permisos por defecto del admin de la sub-cuenta — cubre todo lo
+    // operativo. El admin puede ajustar después desde su propio panel.
+    permissions: {
+      campaignsEnabled: true,
+      contactsEnabled: true,
+      workflowsEnabled: true,
+      triggersEnabled: true,
+      funnelsEnabled: true,
+      websitesEnabled: true,
+      opportunitiesEnabled: true,
+      dashboardStatsEnabled: true,
+      bulkRequestsEnabled: true,
+      appointmentsEnabled: true,
+      reviewsEnabled: true,
+      onlineListingsEnabled: true,
+      phoneCallEnabled: true,
+      conversationsEnabled: true,
+      assignedDataOnly: false,
+      adwordsReportingEnabled: true,
+      membershipEnabled: true,
+      facebookAdsReportingEnabled: true,
+      attributionsReportingEnabled: true,
+      settingsEnabled: true,
+      tagsEnabled: true,
+      leadValueEnabled: true,
+      marketingEnabled: true,
+    },
+  };
+
+  const res = await agencyFetch<{ id?: string; user?: { id?: string; email?: string } }>(
+    ctx,
+    `/users/`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: { "Content-Type": "application/json" },
+    },
+  );
+
+  if (!res.ok) {
+    // Email ya registrado → tratamos como "ya existía" (no es fatal).
+    if (
+      res.reason === "http_error" &&
+      (res.status === 409 ||
+        /already (exists|registered)|duplicate/i.test(res.message))
+    ) {
+      return {
+        ok: true,
+        data: { id: "", email: input.email },
+        reused: true,
+      };
+    }
+    return res;
+  }
+
+  const id = res.data.id ?? res.data.user?.id ?? "";
+  const email = res.data.user?.email ?? input.email;
+
+  if (!id) {
+    return {
+      ok: false,
+      reason: "http_error",
+      status: 500,
+      message: "GHL respondió 200 al POST /users/ pero no devolvió user id.",
+    };
+  }
+
+  return { ok: true, data: { id, email }, reused: false };
+}
+
 // ---------- Helpers UI ----------
 
 /** Formatea el error de un AgencyResult para mostrar al admin sin stack traces. */
