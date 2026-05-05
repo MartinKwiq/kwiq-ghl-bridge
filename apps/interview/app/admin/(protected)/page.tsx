@@ -76,6 +76,11 @@ export default async function AdminDashboardPage() {
   }
 
   // 3. KPIs globales.
+  // Importante: contamos solo sesiones vinculadas a un proyecto Kwiq
+  // (`project_id NOT NULL`). Las sesiones del flow legacy anónimo
+  // (/entrevista/nueva sin login) NO se cuentan acá — sino el dashboard
+  // muestra "1 entrevista en curso" pero ninguna card la muestra
+  // (inconsistencia que tuvimos en prod).
   const [
     { count: projectCount },
     { count: inProgressCount },
@@ -87,15 +92,18 @@ export default async function AdminDashboardPage() {
     sb
       .from("interview_sessions")
       .select("*", { count: "exact", head: true })
-      .eq("status", "in_progress"),
+      .eq("status", "in_progress")
+      .not("project_id", "is", null),
     sb
       .from("interview_sessions")
       .select("*", { count: "exact", head: true })
-      .eq("status", "paused"),
+      .eq("status", "paused")
+      .not("project_id", "is", null),
     sb
       .from("interview_sessions")
       .select("*", { count: "exact", head: true })
-      .eq("status", "completed"),
+      .eq("status", "completed")
+      .not("project_id", "is", null),
     sb
       .from("kwiq_projects")
       .select("*", { count: "exact", head: true })
