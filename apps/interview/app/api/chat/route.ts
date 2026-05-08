@@ -6,6 +6,18 @@ import { supabaseAdmin, supabaseServer } from "@/lib/supabase/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+/**
+ * Vercel default timeout es 10s en Hobby y 15s en Pro. Con conversaciones
+ * largas (60+ turnos de contexto) Gemini puede tardar más, sobre todo
+ * con respuestas largas en español. Subimos a 60s para no cortar la
+ * función a mitad de generación.
+ *
+ * Si la respuesta tarda más de 60s, ahí sí es un problema real (LLM
+ * caído o request mal armado) y vale más cortar y mostrar mensaje
+ * neutro al cliente que dejarlo esperando para siempre.
+ */
+export const maxDuration = 60;
+
 const BodySchema = z.object({
   token: z.string().min(8).max(64),
   message: z.string().min(1).max(4000),

@@ -141,6 +141,11 @@ export function Chat({
         // del proveedor de IA, planes, cuotas, etc). Acá solo aplicamos
         // copy específico para los pocos casos en que el cliente puede
         // accionar por su cuenta (auth, sesión expirada, mensaje bloqueado).
+        //
+        // Importante: si el body no es JSON parseable (caso típico cuando
+        // Vercel devuelve un timeout 504/503 con HTML plano del CDN),
+        // `res.json()` falla y caemos al `{}`. En ese caso queremos
+        // seguir mostrando el copy neutro, NO un "HTTP 503" pelado.
         const body = (await res.json().catch(() => ({}))) as {
           error?: string;
           message?: string;
@@ -159,13 +164,13 @@ export function Chat({
         }
 
         // Para todo lo demás (llm_unavailable, llm_blocked, chat_failed,
-        // db_error, etc.) usamos el `message` del server si vino, y un
-        // copy neutro genérico si no. NUNCA mostramos `details` crudo —
-        // ese campo puede contener stack traces o errores de proveedor
-        // y no es para el cliente final.
+        // db_error, timeout del CDN sin body JSON, etc.) usamos el
+        // `message` del server si vino, y un copy neutro genérico si no.
+        // NUNCA mostramos `details` crudo ni el HTTP code pelado — ese
+        // contenido puede traer stack traces o nombres de proveedores.
         throw new Error(
           body.message ??
-            "Estamos teniendo un inconveniente puntual al procesar tu respuesta. Tu progreso quedó guardado — probá enviar de nuevo en unos minutos.",
+            "Estamos teniendo un inconveniente puntual al procesar tu respuesta. Tu progreso quedó guardado — probá enviar de nuevo en unos minutos, o pausá la entrevista y retomala más tarde, no se pierde nada.",
         );
       }
       const data = (await res.json()) as {
