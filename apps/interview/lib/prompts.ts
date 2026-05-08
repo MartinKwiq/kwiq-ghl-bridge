@@ -126,7 +126,27 @@ export const SECTION_TURN_JSON_SCHEMA = {
 } as const;
 
 /**
- * Parser robusto: algunas veces el LLM escupe fences ```json ... ``` aunque le pidamos que no.
+ * Parser robusto del turno de sección.
+ *
+ * Aunque pedimos `responseMimeType=application/json` con `responseSchema`,
+ * Gemini ocasionalmente devuelve JSON malformado — más típico:
+ *  - fences markdown ```json … ``` aunque pedimos que no.
+ *  - comillas dobles dentro de un string sin escapar (rompe JSON.parse con
+ *    "Unterminated string in JSON …").
+ *  - trailing commas antes de `}` o `]`.
+ *
+ * Este parser intenta tres pases:
+ *   1. JSON.parse directo del payload limpio (caso ~95%).
+ *   2. Reparaciones simples (trailing commas) y reintento.
+ *   3. Extracción tolerante por regex de los campos esenciales (`message`,
+ *      `status`, `next_focus`). En este caso `extracted` queda vacío — se
+ *      pierde la captura de slots de ese turno, pero la conversación sigue
+ *      en lugar de cortarse, y el LLM puede volver a preguntar lo mismo
+ *      en un turno siguiente.
+ *
+ * Si los tres pases fallan, lanza un error con copy estable que la capa
+ * `/api/chat` traduce a `llm_unavailable` — el cliente ve un mensaje
+ * humano y puede reintentar.
  */
 export function parseSectionTurn(raw: string): {
   message: string;
@@ -139,17 +159,90 @@ export function parseSectionTurn(raw: string): {
     .replace(/^```(?:json)?\s*/i, "")
     .replace(/```\s*$/i, "")
     .trim();
-  const parsed = JSON.parse(cleaned);
+
+  let parsed: unknown;
+
+  // Pase 1: directo.
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch {
+    // Pase 2: reparaciones simples.
+    const repaired = cleaned
+      // trailing commas antes de } o ]
+      .replace(/,\s*([}\]])/g, "$1");
+    try {
+      parsed = JSON.parse(repaired);
+    } catch {
+      // Pase 3: extracción tolerante por regex. Si encontramos al menos
+      // `message`, devolvemos un turno mínimo válido para no cortar la UX.
+      const fallback = extractTurnFromMalformedJson(cleaned);
+      if (fallback) {
+        return fallback;
+      }
+      // Sin fallback: lanzamos error para que /api/chat lo clasifique.
+      throw new Error(
+        "llm_response_malformed: el LLM devolvió un payload que no se pudo parsear ni reparar.",
+      );
+    }
+  }
+
+  const obj = parsed as Record<string, unknown>;
   return {
-    message: String(parsed.message ?? ""),
-    extracted: Array.isArray(parsed.extracted)
-      ? parsed.extracted.map((e: { question_id?: unknown; value?: unknown; confidence?: unknown }) => ({
+    message: String(obj.message ?? ""),
+    extracted: Array.isArray(obj.extracted)
+      ? (obj.extracted as Array<Record<string, unknown>>).map((e) => ({
           question_id: String(e.question_id ?? ""),
           value: e.value ?? null,
           confidence: typeof e.confidence === "number" ? e.confidence : 0.5,
         }))
       : [],
-    status: (parsed.status as "in_progress" | "section_complete" | "need_clarification") ?? "in_progress",
-    next_focus: parsed.next_focus ? String(parsed.next_focus) : undefined,
+    status:
+      (obj.status as "in_progress" | "section_complete" | "need_clarification") ??
+      "in_progress",
+    next_focus: obj.next_focus ? String(obj.next_focus) : undefined,
+  };
+}
+
+/**
+ * Extrae los campos esenciales (`message`, `status`, `next_focus`) de un
+ * payload JSON malformado usando regex tolerantes.
+ *
+ * Diseñado para sobrevivir el caso más típico: comillas dobles sin escapar
+ * dentro del valor de `message`, que rompe JSON.parse con "Unterminated
+ * string". En ese caso, capturamos lo que haya entre `"message":"…"` hasta
+ * el próximo `","status"` (que es la siguiente clave del schema).
+ *
+ * `extracted` se descarta — preferimos perder los slots de ESE turno y
+ * mantener la conversación viva, antes que mostrar un error rojo.
+ *
+ * Devuelve `null` si ni siquiera puede sacar un `message` mínimo.
+ */
+function extractTurnFromMalformedJson(raw: string): {
+  message: string;
+  extracted: { question_id: string; value: unknown; confidence: number }[];
+  status: "in_progress" | "section_complete" | "need_clarification";
+  next_focus?: string;
+} | null {
+  // "message" puede llevar caracteres especiales y comillas internas. Nos
+  // anclamos al delimitador siguiente del schema (`"extracted"` o
+  // `"status"`) para saber dónde termina el campo.
+  const msgMatch =
+    raw.match(/"message"\s*:\s*"([\s\S]*?)"\s*,\s*"(?:extracted|status|next_focus)"/) ??
+    raw.match(/"message"\s*:\s*"([\s\S]*?)"\s*[},]/);
+
+  if (!msgMatch || !msgMatch[1]) return null;
+
+  const statusMatch = raw.match(
+    /"status"\s*:\s*"(in_progress|section_complete|need_clarification)"/,
+  );
+  const nextFocusMatch = raw.match(/"next_focus"\s*:\s*"([^"\\]+)"/);
+
+  return {
+    message: msgMatch[1],
+    extracted: [], // se pierden los slots del turno — aceptamos el costo
+    status:
+      (statusMatch?.[1] as "in_progress" | "section_complete" | "need_clarification") ??
+      "in_progress",
+    next_focus: nextFocusMatch?.[1],
   };
 }

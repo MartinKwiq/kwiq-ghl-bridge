@@ -171,6 +171,25 @@ function classifyLlmError(
     };
   }
 
+  // JSON malformado del LLM tras los 2 pases de reparación + el fallback.
+  // Si llegamos acá significa que ni siquiera el regex tolerante pudo
+  // extraer un `message`. Para el cliente es indistinguible de cualquier
+  // otro inconveniente puntual.
+  if (
+    lower.includes("llm_response_malformed") ||
+    lower.includes("unterminated string in json") ||
+    lower.includes("unexpected token") && lower.includes("json")
+  ) {
+    return {
+      status: 503,
+      body: {
+        error: "llm_unavailable",
+        message:
+          "Estamos teniendo un inconveniente puntual al procesar tu respuesta. Tu progreso quedó guardado — probá enviar de nuevo en unos minutos, o pausá la entrevista y retomala más tarde, no se pierde nada.",
+      },
+    };
+  }
+
   // El LLM bloqueó la respuesta por safety filters. Acá sí tiene sentido
   // diferenciar, porque el cliente puede REFORMULAR su mensaje y arreglar
   // el problema por su cuenta.
