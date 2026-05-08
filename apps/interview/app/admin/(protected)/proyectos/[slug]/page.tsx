@@ -6,6 +6,7 @@ import {
   type RunReport,
 } from "@/components/admin/provision-panel";
 import { LocationCreatePanel } from "@/components/admin/location-create-panel";
+import { LocationPitCard } from "@/components/admin/location-pit-card";
 import { sectionOrder, getSectionById } from "@/lib/interview-schema";
 
 export const dynamic = "force-dynamic";
@@ -28,7 +29,7 @@ export default async function ProjectDetailPage({ params }: Props) {
   const { data: project } = await sb
     .from("kwiq_projects")
     .select(
-      "id, slug, client_name, contact_email, status, auth_mode, ghl_location_id, ghl_company_id, ghl_token_enc, ghl_refresh_enc, ghl_token_expires_at, ghl_scopes, notes, created_at, updated_at, ghl_location_created_at, admin_first_name, admin_last_name, business_name, business_country, business_timezone, business_phone, snapshot_id",
+      "id, slug, client_name, contact_email, status, auth_mode, ghl_location_id, ghl_company_id, ghl_token_enc, ghl_refresh_enc, ghl_token_expires_at, ghl_scopes, notes, created_at, updated_at, ghl_location_created_at, admin_first_name, admin_last_name, business_name, business_country, business_timezone, business_phone, snapshot_id, ghl_location_pit_loaded_at, ghl_location_pit_rotated_at",
     )
     .eq("slug", slug)
     .maybeSingle();
@@ -222,6 +223,17 @@ export default async function ProjectDetailPage({ params }: Props) {
         adminLastName={(project.admin_last_name as string | null) ?? null}
         contactEmail={(project.contact_email as string | null) ?? null}
         snapshotId={(project.snapshot_id as string | null) ?? null}
+      />
+
+      <LocationPitCard
+        slug={project.slug as string}
+        ghlLocationId={(project.ghl_location_id as string | null) ?? null}
+        initialState={{
+          loaded_at:
+            (project.ghl_location_pit_loaded_at as string | null) ?? null,
+          rotated_at:
+            (project.ghl_location_pit_rotated_at as string | null) ?? null,
+        }}
       />
 
       <section className="rounded-2xl border border-kwiq-border bg-kwiq-panel/40 p-6">

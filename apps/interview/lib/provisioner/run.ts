@@ -19,7 +19,7 @@ import type {
   RunStatus,
   StepResult,
 } from "./types";
-import { getLocationContext } from "./location-client";
+import { getLocationContextByProject } from "./location-client";
 import { stepCustomValues } from "./steps/custom-values";
 import { stepTags } from "./steps/tags";
 import { stepCustomFields } from "./steps/custom-fields";
@@ -109,17 +109,17 @@ export async function runProvisioner(
 
   const run_id = runRow.id as string;
 
-  // 4. Resolver LocationContext.
-  const ctx = await getLocationContext(project.ghl_location_id);
-  if (!ctx) {
+  // 4. Resolver LocationContext (lee Sub-account PIT del proyecto).
+  const ctxResult = await getLocationContextByProject(project.id);
+  if (!ctxResult.ok) {
     return finalizeRun(run_id, {
       started_at,
       step_results: [],
       status: "failed",
-      error_message:
-        "Falta el Agency PIT en Ajustes (ghl.agency_pit). Cargalo en /admin/ajustes.",
+      error_message: ctxResult.message,
     });
   }
+  const ctx = ctxResult.ctx;
 
   const input: ProvisionInput = {
     project_id: project.id,
