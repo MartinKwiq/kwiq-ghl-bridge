@@ -102,6 +102,92 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error("[/api/chat] error:", msg);
+
+    // Clasificación de errores para que el cliente muestre el copy
+    // correcto sin tener que parsear el JSON crudo de Google.
+    const classified = classifyLlmError(msg);
+    if (classified) {
+      return NextResponse.json(classified.body, { status: classified.status });
+    }
+
     return NextResponse.json({ error: "chat_failed", details: msg }, { status: 500 });
   }
+}
+
+/**
+ * Detecta errores típicos del LLM (rate limit, key inválida, prompt block)
+ * y los traduce a un shape estable que el front puede renderizar con copy
+ * humano. Si no lo reconocemos, devolvemos null y dejamos que el caller
+ * use el shape genérico `chat_failed`.
+ */
+function classifyLlmError(
+  msg: string,
+): { status: number; body: Record<string, unknown> } | null {
+  const lower = msg.toLowerCase();
+
+  // 429 / quota / rate limit (Gemini lo expone en Google API style:
+  // "[429 Too Many Requests]" + "RESOURCE_EXHAUSTED" + retryDelay).
+  if (
+    lower.includes("429") ||
+    lower.includes("resource_exhausted") ||
+    lower.includes("quota exceeded") ||
+    lower.includes("rate limit")
+  ) {
+    // Intentamos sacar el retry suggestion del payload de Google ("retryDelay":"12s").
+    const retryMatch = msg.match(/retryDelay"\s*:\s*"(\d+)s/i);
+    const retrySeconds = retryMatch ? Number(retryMatch[1]) : null;
+
+    // Si menciona "free_tier", el problema es que la API key está en el
+    // tier gratuito y se acabó la cuota DIARIA — no se libera en segundos,
+    // se libera mañana. Avisamos distinto.
+    const isFreeTier =
+      lower.includes("free_tier") || lower.includes("free tier");
+
+    return {
+      status: 429,
+      body: {
+        error: "llm_rate_limited",
+        is_free_tier: isFreeTier,
+        retry_after_seconds: retrySeconds,
+        message: isFreeTier
+          ? "La cuota gratuita de Gemini se agotó. El equipo Kwiq tiene que actualizar el plan; volvé a intentar en un rato."
+          : retrySeconds
+            ? `El asistente está saturado. Probá de nuevo en ${retrySeconds} segundos.`
+            : "El asistente está saturado. Probá de nuevo en unos segundos.",
+      },
+    };
+  }
+
+  // 401/403 → key inválida o sin permiso.
+  if (
+    lower.includes("api key not valid") ||
+    lower.includes("permission_denied") ||
+    lower.includes("api_key_invalid")
+  ) {
+    return {
+      status: 502,
+      body: {
+        error: "llm_auth_error",
+        message:
+          "Hubo un problema con la conexión al asistente. El equipo Kwiq ya fue avisado.",
+      },
+    };
+  }
+
+  // El LLM bloqueó la respuesta por safety filters.
+  if (
+    lower.includes("safety") &&
+    (lower.includes("block") || lower.includes("filtered"))
+  ) {
+    return {
+      status: 422,
+      body: {
+        error: "llm_blocked",
+        message:
+          "El asistente no pudo procesar ese mensaje. Probá reformularlo.",
+      },
+    };
+  }
+
+  return null;
 }

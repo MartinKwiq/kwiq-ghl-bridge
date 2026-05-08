@@ -136,8 +136,53 @@ export function Chat({
         body: JSON.stringify({ token, message: text }),
       });
       if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as { details?: string };
-        throw new Error(body.details || `HTTP ${res.status}`);
+        // El endpoint devuelve un shape estable con `error` y `message`
+        // amigable. Solo caemos al `details` crudo si por alguna razón
+        // el error no fue clasificado.
+        const body = (await res.json().catch(() => ({}))) as {
+          error?: string;
+          message?: string;
+          details?: string;
+          is_free_tier?: boolean;
+          retry_after_seconds?: number | null;
+        };
+        if (body.error === "llm_rate_limited") {
+          if (body.is_free_tier) {
+            throw new Error(
+              "La cuota del asistente se agotó por hoy. El equipo Kwiq ya fue avisado para ampliar el plan. Mientras tanto, podés pausar la entrevista y retomarla más tarde — todo lo que respondiste hasta acá quedó guardado.",
+            );
+          }
+          const wait = body.retry_after_seconds
+            ? ` (probá en ${body.retry_after_seconds} segundos)`
+            : "";
+          throw new Error(
+            `El asistente está saturado en este momento${wait}. Probá enviar tu respuesta de nuevo en un instante.`,
+          );
+        }
+        if (body.error === "llm_auth_error") {
+          throw new Error(
+            "Hay un problema de configuración del asistente. El equipo Kwiq ya fue avisado — escribinos a hola@kwiq.io si seguís viendo esto.",
+          );
+        }
+        if (body.error === "llm_blocked") {
+          throw new Error(
+            "El asistente no pudo procesar ese mensaje. Probá reformularlo de otra manera.",
+          );
+        }
+        if (body.error === "not_authenticated") {
+          throw new Error(
+            "Tu sesión expiró. Recargá la página e iniciá sesión de nuevo.",
+          );
+        }
+        if (body.error === "forbidden" || body.error === "orphan_session") {
+          throw new Error(
+            "Esta entrevista no está disponible para tu cuenta. Si creés que es un error, escribinos a hola@kwiq.io.",
+          );
+        }
+        // Fallback: mostramos el message si vino, sino HTTP plain.
+        throw new Error(
+          body.message ?? body.details ?? `HTTP ${res.status}`,
+        );
       }
       const data = (await res.json()) as {
         message: string;
