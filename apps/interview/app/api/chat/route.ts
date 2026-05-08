@@ -116,65 +116,64 @@ export async function POST(req: NextRequest) {
 
 /**
  * Detecta errores típicos del LLM (rate limit, key inválida, prompt block)
- * y los traduce a un shape estable que el front puede renderizar con copy
- * humano. Si no lo reconocemos, devolvemos null y dejamos que el caller
- * use el shape genérico `chat_failed`.
+ * y los traduce a un shape estable que el front puede renderizar.
+ *
+ * El copy que se devuelve al cliente es deliberadamente NEUTRO y NO
+ * menciona detalles internos (proveedor del LLM, planes, cuotas, free
+ * tier, billing, etc). El cliente solo necesita saber que tuvimos un
+ * inconveniente puntual, que su progreso está a salvo, y qué hacer.
+ *
+ * Los detalles técnicos (qué error real, qué proveedor, cuánto esperar)
+ * se loguean en console.error para que el equipo Kwiq los investigue,
+ * pero nunca llegan a la UI.
  */
 function classifyLlmError(
   msg: string,
 ): { status: number; body: Record<string, unknown> } | null {
   const lower = msg.toLowerCase();
 
-  // 429 / quota / rate limit (Gemini lo expone en Google API style:
-  // "[429 Too Many Requests]" + "RESOURCE_EXHAUSTED" + retryDelay).
+  // Cualquier error que sugiera saturación / rate limit / cuota / quota.
+  // Para el cliente NO distinguimos entre "saturado por minuto" y
+  // "agotamos plan diario" — los dos se ven igual de afuera.
   if (
     lower.includes("429") ||
     lower.includes("resource_exhausted") ||
-    lower.includes("quota exceeded") ||
-    lower.includes("rate limit")
-  ) {
-    // Intentamos sacar el retry suggestion del payload de Google ("retryDelay":"12s").
-    const retryMatch = msg.match(/retryDelay"\s*:\s*"(\d+)s/i);
-    const retrySeconds = retryMatch ? Number(retryMatch[1]) : null;
-
-    // Si menciona "free_tier", el problema es que la API key está en el
-    // tier gratuito y se acabó la cuota DIARIA — no se libera en segundos,
-    // se libera mañana. Avisamos distinto.
-    const isFreeTier =
-      lower.includes("free_tier") || lower.includes("free tier");
-
-    return {
-      status: 429,
-      body: {
-        error: "llm_rate_limited",
-        is_free_tier: isFreeTier,
-        retry_after_seconds: retrySeconds,
-        message: isFreeTier
-          ? "La cuota gratuita de Gemini se agotó. El equipo Kwiq tiene que actualizar el plan; volvé a intentar en un rato."
-          : retrySeconds
-            ? `El asistente está saturado. Probá de nuevo en ${retrySeconds} segundos.`
-            : "El asistente está saturado. Probá de nuevo en unos segundos.",
-      },
-    };
-  }
-
-  // 401/403 → key inválida o sin permiso.
-  if (
-    lower.includes("api key not valid") ||
-    lower.includes("permission_denied") ||
-    lower.includes("api_key_invalid")
+    lower.includes("quota") ||
+    lower.includes("rate limit") ||
+    lower.includes("rate_limit")
   ) {
     return {
-      status: 502,
+      status: 503,
       body: {
-        error: "llm_auth_error",
+        error: "llm_unavailable",
         message:
-          "Hubo un problema con la conexión al asistente. El equipo Kwiq ya fue avisado.",
+          "Estamos teniendo un inconveniente puntual al procesar tu respuesta. Tu progreso quedó guardado — probá enviar de nuevo en unos minutos, o pausá la entrevista y retomala más tarde, no se pierde nada.",
       },
     };
   }
 
-  // El LLM bloqueó la respuesta por safety filters.
+  // 401/403 / key inválida / permisos. Para el cliente, también es
+  // "inconveniente puntual" — no necesita saber que es un tema de auth
+  // del proveedor de IA.
+  if (
+    lower.includes("api key") ||
+    lower.includes("permission_denied") ||
+    lower.includes("api_key_invalid") ||
+    lower.includes("unauthenticated")
+  ) {
+    return {
+      status: 503,
+      body: {
+        error: "llm_unavailable",
+        message:
+          "Estamos teniendo un inconveniente puntual al procesar tu respuesta. Tu progreso quedó guardado — probá enviar de nuevo en unos minutos, o pausá la entrevista y retomala más tarde, no se pierde nada.",
+      },
+    };
+  }
+
+  // El LLM bloqueó la respuesta por safety filters. Acá sí tiene sentido
+  // diferenciar, porque el cliente puede REFORMULAR su mensaje y arreglar
+  // el problema por su cuenta.
   if (
     lower.includes("safety") &&
     (lower.includes("block") || lower.includes("filtered"))
@@ -184,7 +183,7 @@ function classifyLlmError(
       body: {
         error: "llm_blocked",
         message:
-          "El asistente no pudo procesar ese mensaje. Probá reformularlo.",
+          "No pudimos procesar ese mensaje. Probá reformularlo de otra manera.",
       },
     };
   }
