@@ -71,7 +71,18 @@ export async function handleUserTurn(opts: {
       content: t.content,
     }));
 
-  const nextTurnIndex = (priorTurns?.length ?? 0);
+  // Calcular el próximo turn_index a partir del MÁXIMO actual + 1, NO de
+  // `priorTurns.length`. Si en algún momento se borraron turnos
+  // manualmente (por ejemplo, para limpiar duplicados), `length` queda
+  // desfasado del max real y choca contra la unique constraint
+  // `interview_turns_session_id_turn_index_key` al intentar insertar.
+  // Síntoma observado: PostgresError "duplicate key value violates unique
+  // constraint" repetido en logs cada vez que el cliente reintentaba.
+  const maxTurnIndex = (priorTurns ?? []).reduce(
+    (acc, t) => (typeof t.turn_index === "number" && t.turn_index > acc ? t.turn_index : acc),
+    -1,
+  );
+  const nextTurnIndex = maxTurnIndex + 1;
 
   // 3) Persistir turno del usuario
   await sb.from("interview_turns").insert({
