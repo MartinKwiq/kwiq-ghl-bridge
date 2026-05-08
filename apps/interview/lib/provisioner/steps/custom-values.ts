@@ -60,15 +60,10 @@ export async function stepCustomValues(
     };
   }
 
-  // No necesitamos listar todo si confiamos en la idempotency table;
-  // pero lo hacemos igual en dry-run como sanity check informativo.
-  // En apply mode lo salteamos para no gastar rate-limit.
-  if (input.mode === "dry_run") {
-    await locationFetch<GhlCustomValuesList>(
-      ctx,
-      `/locations/${ctx.location_id}/customValues`,
-    );
-  }
+  // En dry-run NO tocamos GHL — confiamos en la idempotency table para
+  // saber qué crearíamos / actualizaríamos. Antes había un GET acá como
+  // "sanity check" pero contradecía el contrato del dry-run y disparaba
+  // 401s ruidosos cuando el location token no estaba todavía emitido.
 
   for (const cv of cvs) {
     const local_key = cv.key;

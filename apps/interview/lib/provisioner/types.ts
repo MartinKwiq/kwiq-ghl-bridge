@@ -58,10 +58,16 @@ export interface ProvisionInput {
   mode: "dry_run" | "apply";
 }
 
-/** Contexto HTTP que reciben los steps — ya resuelto el PIT. */
+/** Contexto HTTP que reciben los steps — ya resuelto el PIT y el company_id.
+ *
+ * `company_id` es necesario para canjear el Agency PIT por un Location
+ * Access Token (ver location-client.ts). Sin él no se puede escribir en
+ * la sub-cuenta — GHL devuelve 401.
+ */
 export interface LocationContext {
   pit: string;
   location_id: string;
+  company_id: string;
 }
 
 /** Resultado `ok | error` de una llamada HTTP a GHL desde el provisioner. */
