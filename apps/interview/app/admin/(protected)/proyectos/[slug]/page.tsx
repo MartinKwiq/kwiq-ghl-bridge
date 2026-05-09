@@ -7,6 +7,7 @@ import {
 } from "@/components/admin/provision-panel";
 import { LocationCreatePanel } from "@/components/admin/location-create-panel";
 import { LocationPitCard } from "@/components/admin/location-pit-card";
+import { InventoryPanel } from "@/components/admin/inventory-panel";
 import { sectionOrder, getSectionById } from "@/lib/interview-schema";
 
 export const dynamic = "force-dynamic";
@@ -234,6 +235,12 @@ export default async function ProjectDetailPage({ params }: Props) {
           rotated_at:
             (project.ghl_location_pit_rotated_at as string | null) ?? null,
         }}
+      />
+
+      <InventoryPanel
+        slug={project.slug as string}
+        locationReady={Boolean(project.ghl_location_id)}
+        pitLoaded={Boolean(project.ghl_location_pit_loaded_at)}
       />
 
       <section className="rounded-2xl border border-kwiq-border bg-kwiq-panel/40 p-6">
