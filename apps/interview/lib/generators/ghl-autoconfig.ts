@@ -17,6 +17,12 @@ export interface GhlAutoConfig {
     data_type: string; // "TEXT" | "LARGE_TEXT" | "NUMERICAL" | "DATE" | "PHONE" | "EMAIL" | "SINGLE_OPTIONS" | "MULTIPLE_OPTIONS" | "RADIO" | "CHECKBOX" | "FILE_UPLOAD" | "MONETORY"
     model: "contact" | "opportunity";
     options?: string[];
+    /** Carpeta donde agruparlo en el panel GHL. Opcional. */
+    folder?: string;
+    /** Marker interno: agrupa respuestas por `record_index` cuando un
+     *  custom_field se construye desde varias preguntas. Se descarta al
+     *  serializar al provisioner. */
+    __record?: number;
   }>;
   custom_values: Array<{ key: string; value: unknown }>;
   pipelines: Array<{
@@ -128,6 +134,12 @@ export function buildGhlAutoConfig(
     });
   }
 
+  // Limpieza final: descartamos custom_fields incompletos (sin nombre o
+  // field_key) y removemos los marcadores internos `__record`.
+  out.custom_fields = out.custom_fields
+    .filter((cf) => cf.name && cf.field_key)
+    .map(({ __record: _r, ...rest }) => rest);
+
   return out;
 }
 
@@ -142,13 +154,72 @@ function dispatchAnswer(
   switch (q.output.target) {
     case "ghl_custom_field_contact":
     case "ghl_custom_field_opportunity": {
-      out.custom_fields.push({
-        field_key: q.output.key ?? q.id,
-        name: q.label,
-        data_type: mapFieldTypeToGhlDataType(q),
-        model: q.output.target === "ghl_custom_field_opportunity" ? "opportunity" : "contact",
-        options: q.options,
-      });
+      // Las preguntas de la sección "Campos personalizados adicionales"
+      // comparten `record_index` y describen 4 atributos del mismo
+      // custom_field: category (= model), name, type (= data_type),
+      // folder. Agrupamos por record_index — si ya existe un cf con
+      // ese record, le mergeamos los atributos en lugar de pushear
+      // uno nuevo.
+      const idx = ans.record_index ?? 0;
+      const attrKey = q.output.key ?? q.id;
+      let cf = out.custom_fields.find((c) => c.__record === idx);
+      if (!cf) {
+        cf = {
+          field_key: "",
+          name: "",
+          data_type: "TEXT",
+          model:
+            q.output.target === "ghl_custom_field_opportunity"
+              ? "opportunity"
+              : "contact",
+          __record: idx,
+        };
+        out.custom_fields.push(cf);
+      }
+      const valStr = typeof value === "string" ? value : String(value ?? "");
+      switch (attrKey) {
+        case "category": {
+          // "Contacto" → contact ; "Oportunidad" → opportunity
+          cf.model = /oportun/i.test(valStr) ? "opportunity" : "contact";
+          break;
+        }
+        case "name": {
+          cf.name = valStr.trim();
+          // Derivamos un field_key estable a partir del nombre.
+          // (snake_case sin tildes — patrón que GHL acepta).
+          cf.field_key = valStr
+            .normalize("NFD")
+            .replace(/[̀-ͯ]/g, "")
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "_")
+            .replace(/^_+|_+$/g, "");
+          break;
+        }
+        case "type": {
+          cf.data_type = mapHumanFieldTypeToGhlDataType(valStr);
+          if (q.options) cf.options = q.options;
+          break;
+        }
+        case "folder": {
+          if (valStr.trim()) cf.folder = valStr.trim();
+          break;
+        }
+        default: {
+          // Caso legado: si no es una de las 4 keys conocidas, generar
+          // un cf independiente (back-compat).
+          out.custom_fields.push({
+            field_key: attrKey,
+            name: q.label,
+            data_type: mapFieldTypeToGhlDataType(q),
+            model:
+              q.output.target === "ghl_custom_field_opportunity"
+                ? "opportunity"
+                : "contact",
+            options: q.options,
+          });
+          break;
+        }
+      }
       break;
     }
     case "ghl_custom_value": {
@@ -176,7 +247,15 @@ function dispatchAnswer(
     }
     case "ghl_tag": {
       if (typeof value === "string" && value.trim()) {
-        out.tags.push({ name: value.trim() });
+        const name = value.trim();
+        // GHL acepta tags de hasta ~60 chars. Si la respuesta del LLM
+        // trajo una oración entera (ej. la descripción del tag en lugar
+        // del nombre), descartamos. El admin Kwiq puede crear el tag a
+        // mano después si lo necesita.
+        if (name.length > 60) break;
+        // Tampoco aceptamos tags multi-línea.
+        if (name.includes("\n")) break;
+        out.tags.push({ name });
       }
       break;
     }
@@ -321,4 +400,25 @@ function mapFieldTypeToGhlDataType(q: QuestionDef): string {
     default:
       return "TEXT";
   }
+}
+
+/**
+ * Mapea las labels humanas que el cliente eligió en la entrevista
+ * (ej. "Una sola línea", "Varias líneas", "Menú desplegable único") al
+ * data_type que GHL espera en POST /customFields.
+ */
+function mapHumanFieldTypeToGhlDataType(human: string): string {
+  const s = human.toLowerCase();
+  if (s.includes("varias") || s.includes("largo")) return "LARGE_TEXT";
+  if (s.includes("una sola") || s.includes("texto")) return "TEXT";
+  if (s.includes("menú") || s.includes("menu") || s.includes("desplegable"))
+    return "SINGLE_OPTIONS";
+  if (s.includes("opción") || s.includes("opcion") || s.includes("radio"))
+    return "RADIO";
+  if (s.includes("fecha")) return "DATE";
+  if (s.includes("número") || s.includes("numero") || s.includes("cantidad"))
+    return "NUMERICAL";
+  if (s.includes("archivo") || s.includes("file")) return "FILE_UPLOAD";
+  if (s.includes("checkbox")) return "CHECKBOX";
+  return "TEXT";
 }

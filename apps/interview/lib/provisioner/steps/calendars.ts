@@ -46,10 +46,34 @@ interface GhlCalendarResponse {
 }
 
 /** Mapeo día string → openHours.daysOfTheWeek (formato GHL: 0=domingo, 1=lunes...). */
+/**
+ * Mapa amplio de identificadores de día → 0..6 (0 = domingo, GHL).
+ *
+ * El autoconfig viene de un LLM, así que las keys de availability
+ * pueden estar en formatos variados: "Mon", "lunes", "LUNES", "L",
+ * "monday", etc. Mejor que sea generoso y normalizar adentro.
+ */
 const DAY_INDEX: Record<string, number> = {
-  Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
-  Dom: 0, Lun: 1, Mar: 2, Mie: 3, Jue: 4, Vie: 5, Sab: 6,
+  // Inglés corto
+  sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6,
+  // Inglés largo
+  sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4,
+  friday: 5, saturday: 6,
+  // Español corto
+  dom: 0, lun: 1, mar: 2, mie: 3, jue: 4, vie: 5, sab: 6,
+  // Español largo
+  domingo: 0, lunes: 1, martes: 2, miercoles: 3, miércoles: 3,
+  jueves: 4, viernes: 5, sabado: 6, sábado: 6,
 };
+
+function dayIndexFor(raw: string): number | undefined {
+  const norm = raw
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .trim();
+  return DAY_INDEX[norm];
+}
 
 export async function stepCalendars(
   ctx: LocationContext,
@@ -91,6 +115,19 @@ export async function stepCalendars(
 
     const openHours = buildOpenHours(c.availability ?? {});
 
+    // teamMembers — GHL exige al menos 1 user. Tomamos el primer user
+    // de la sub-cuenta (típicamente el owner creado al hacer
+    // POST /locations/, o Lucía adminada después). Si no hay ninguno,
+    // GHL va a rechazar el calendar — el step va a fallar con un error
+    // claro.
+    const remoteUsers = input.inventory.users.items;
+    const teamMembers = remoteUsers.slice(0, 1).map((u) => ({
+      userId: u.id,
+      priority: 0.5,
+      meetingLocationType: "default",
+      isPrimary: true,
+    }));
+
     const payload: Record<string, unknown> = {
       locationId: ctx.location_id,
       name: c.name.trim(),
@@ -113,10 +150,9 @@ export async function stepCalendars(
         : "Custom",
       isActive: true,
       autoConfirm: true,
-      shouldConfirmEmailToHost: true,
-      shouldNotifyHostByEmail: true,
-      // assignedUserIds vacío — el cliente los asigna después.
-      teamMembers: [],
+      // shouldConfirmEmailToHost / shouldNotifyHostByEmail eran props
+      // de la API v1, GHL v2 las rechaza con 422 "should not exist".
+      teamMembers,
     };
 
     const fp = fingerprint(payload);
@@ -263,7 +299,7 @@ function buildOpenHours(
   }> = [];
 
   for (const [day, slots] of Object.entries(availability)) {
-    const dayIdx = DAY_INDEX[day];
+    const dayIdx = dayIndexFor(day);
     if (dayIdx === undefined) continue;
     if (!Array.isArray(slots) || slots.length === 0) continue;
 
