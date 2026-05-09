@@ -30,7 +30,7 @@ export default async function ProjectDetailPage({ params }: Props) {
   const { data: project } = await sb
     .from("kwiq_projects")
     .select(
-      "id, slug, client_name, contact_email, status, auth_mode, ghl_location_id, ghl_company_id, ghl_token_enc, ghl_refresh_enc, ghl_token_expires_at, ghl_scopes, notes, created_at, updated_at, ghl_location_created_at, admin_first_name, admin_last_name, business_name, business_country, business_timezone, business_phone, snapshot_id, ghl_location_pit_loaded_at, ghl_location_pit_rotated_at",
+      "id, slug, client_name, contact_email, status, auth_mode, ghl_location_id, ghl_company_id, ghl_token_enc, ghl_refresh_enc, ghl_token_expires_at, ghl_scopes, notes, created_at, updated_at, ghl_location_created_at, admin_first_name, admin_last_name, business_name, business_country, business_timezone, business_phone, snapshot_id, ghl_location_pit_loaded_at, ghl_location_pit_rotated_at, last_inventory_jsonb, last_inventory_fetched_at",
     )
     .eq("slug", slug)
     .maybeSingle();
@@ -241,6 +241,14 @@ export default async function ProjectDetailPage({ params }: Props) {
         slug={project.slug as string}
         locationReady={Boolean(project.ghl_location_id)}
         pitLoaded={Boolean(project.ghl_location_pit_loaded_at)}
+        cachedReport={
+          (project.last_inventory_jsonb as
+            | Parameters<typeof InventoryPanel>[0]["cachedReport"]
+            | null) ?? null
+        }
+        cachedFetchedAt={
+          (project.last_inventory_fetched_at as string | null) ?? null
+        }
       />
 
       <section className="rounded-2xl border border-kwiq-border bg-kwiq-panel/40 p-6">

@@ -49,15 +49,33 @@ export function InventoryPanel({
   slug,
   locationReady,
   pitLoaded,
+  cachedReport,
+  cachedFetchedAt,
 }: {
   slug: string;
   locationReady: boolean;
   pitLoaded: boolean;
+  /** Inventario cacheado en DB (last_inventory_jsonb). Hidrata el estado al abrir la página. */
+  cachedReport?: InventoryReport | null;
+  cachedFetchedAt?: string | null;
 }) {
-  const [report, setReport] = useState<InventoryReport | null>(null);
+  const [report, setReport] = useState<InventoryReport | null>(
+    cachedReport ?? null,
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>(
+    cachedReport
+      ? {
+          tags: cachedReport.tags.count > 0,
+          custom_values: cachedReport.custom_values.count > 0,
+          custom_fields: cachedReport.custom_fields.count > 0,
+          pipelines: cachedReport.pipelines.count > 0,
+          calendars: cachedReport.calendars.count > 0,
+          users: cachedReport.users.count > 0,
+        }
+      : {},
+  );
 
   const canSync = locationReady && pitLoaded;
 
@@ -163,6 +181,13 @@ export function InventoryPanel({
             </span>
             <span>·</span>
             <span>{report.duration_ms} ms</span>
+            {cachedReport &&
+              cachedFetchedAt &&
+              report.fetched_at === cachedReport.fetched_at && (
+                <span className="rounded-full border border-kwiq-border bg-kwiq-bg/40 px-2 py-0.5 text-[10px] uppercase tracking-widest">
+                  caché
+                </span>
+              )}
           </div>
 
           <Section

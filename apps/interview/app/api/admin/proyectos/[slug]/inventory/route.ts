@@ -73,7 +73,7 @@ export async function GET(_req: Request, { params }: RouteParams) {
 
   const { data: project } = await admin
     .from("kwiq_projects")
-    .select("id, ghl_location_id")
+    .select("id, ghl_location_id, last_inventory_jsonb, last_inventory_fetched_at")
     .eq("slug", slug)
     .maybeSingle();
 
@@ -129,8 +129,28 @@ export async function GET(_req: Request, { params }: RouteParams) {
     users,
   };
 
+  // Persistir el snapshot para que el provisioner pueda razonar sobre él
+  // sin tener que re-sincronizar GHL en cada run, y para que la UI lo
+  // muestre persistido entre page loads.
+  await admin
+    .from("kwiq_projects")
+    .update({
+      last_inventory_jsonb: report,
+      last_inventory_fetched_at: report.fetched_at,
+    })
+    .eq("id", project.id);
+
   return NextResponse.json(report);
 }
+
+/**
+ * GET handler que devuelve el último inventario CACHEADO en DB sin tocar
+ * GHL. Útil para que la UI hidrate su estado inicial cuando se abre la
+ * página, antes de que el admin apriete "Sincronizar".
+ *
+ * No exporto esta función — el GET principal sigue siendo el "live", y
+ * el componente UI carga el cacheado desde el SSR via supabaseAdmin().
+ */
 
 // ─── Fetchers individuales ─────────────────────────────────────────
 
