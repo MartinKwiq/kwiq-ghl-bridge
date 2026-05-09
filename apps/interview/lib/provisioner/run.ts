@@ -20,6 +20,7 @@ import type {
   StepResult,
 } from "./types";
 import { getLocationContextByProject } from "./location-client";
+import { loadInventoryFromDb } from "./inventory";
 import { stepCustomValues } from "./steps/custom-values";
 import { stepTags } from "./steps/tags";
 import { stepCustomFields } from "./steps/custom-fields";
@@ -121,12 +122,27 @@ export async function runProvisioner(
   }
   const ctx = ctxResult.ctx;
 
+  // 4b. Cargar el inventario remoto (cacheado en DB). Sin esto, el
+  //     provisioner no puede decidir entre create/update/adopt/skip y
+  //     vuelven a aparecer los duplicados que vimos en el run anterior.
+  const invResult = await loadInventoryFromDb(project.id);
+  if (!invResult.ok) {
+    return finalizeRun(run_id, {
+      started_at,
+      step_results: [],
+      status: "failed",
+      error_message: invResult.message,
+    });
+  }
+  const inventory = invResult.report;
+
   const input: ProvisionInput = {
     project_id: project.id,
     location_id: project.ghl_location_id,
     autoconfig: outputs.ghl_autoconfig_json,
     conversation_ai: outputs.conversation_ai_bundle,
     mode: opts.mode,
+    inventory,
   };
 
   // 5. Correr steps en orden canónico (PROVISIONING.md §3.3):

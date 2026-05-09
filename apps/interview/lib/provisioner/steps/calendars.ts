@@ -27,10 +27,11 @@
 import type { LocationContext, ProvisionInput, StepResult } from "../types";
 import { locationFetch } from "../location-client";
 import {
-  decideAction,
+  decideActionWithRemote,
   fingerprint,
   upsertResourceRecord,
 } from "../idempotency";
+import { findByNormalizedName } from "../normalize";
 
 const RESOURCE_KIND = "calendar";
 
@@ -120,11 +121,18 @@ export async function stepCalendars(
 
     const fp = fingerprint(payload);
 
-    const decision = await decideAction(
+    // Match contra inventario por nombre del calendario.
+    const remote = findByNormalizedName(
+      input.inventory.calendars.items,
+      c.name,
+    );
+
+    const decision = await decideActionWithRemote(
       input.project_id,
       RESOURCE_KIND,
       local_key,
       fp,
+      remote ? { id: remote.id } : null,
     );
 
     if (decision.action === "skip") {

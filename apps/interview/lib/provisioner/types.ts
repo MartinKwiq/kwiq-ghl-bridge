@@ -13,6 +13,7 @@
  * en orden y persiste el `RunRecord` en `kwiq_provisioning_runs`.
  */
 import type { GhlAutoConfig } from "@/lib/generators/ghl-autoconfig";
+import type { InventoryReport } from "./inventory";
 
 /** Resultado de ejecutar un único step del provisioner. */
 export interface StepResult {
@@ -56,6 +57,13 @@ export interface ProvisionInput {
   conversation_ai?: unknown;
   /** Modo: "dry_run" muestra qué haría pero no toca GHL. */
   mode: "dry_run" | "apply";
+  /**
+   * Snapshot del estado actual de la sub-cuenta GHL. Se cachea en
+   * `kwiq_projects.last_inventory_jsonb` y el orquestador lo carga una
+   * sola vez al inicio del run. Cada step lo usa para decidir
+   * create/update/adopt/skip via `decideActionWithRemote()`.
+   */
+  inventory: InventoryReport;
 }
 
 /** Contexto HTTP que reciben los steps — ya resuelto el PIT y el company_id.

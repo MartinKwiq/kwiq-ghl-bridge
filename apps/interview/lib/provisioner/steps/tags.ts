@@ -16,10 +16,11 @@
 import type { LocationContext, ProvisionInput, StepResult } from "../types";
 import { locationFetch } from "../location-client";
 import {
-  decideAction,
+  decideActionWithRemote,
   fingerprint,
   upsertResourceRecord,
 } from "../idempotency";
+import { findByNormalizedName } from "../normalize";
 
 const RESOURCE_KIND = "tag";
 
@@ -58,17 +59,25 @@ export async function stepTags(
     };
   }
 
+  // Inventario remoto — el snapshot suele traer 50-80 tags pre-creados
+  // (cita_agendada, whatsapp, recordatorio_*, etc). Adoptamos los que
+  // ya existen en lugar de hacer POST que GHL ignora silenciosamente.
+  const remoteItems = input.inventory.tags.items;
+
   for (const tag of tags) {
     if (!tag.name?.trim()) continue;
     const local_key = tag.name.trim().toLowerCase();
     const payload = { name: tag.name.trim() };
     const fp = fingerprint(payload);
 
-    const decision = await decideAction(
+    const remote = findByNormalizedName(remoteItems, tag.name);
+
+    const decision = await decideActionWithRemote(
       input.project_id,
       RESOURCE_KIND,
       local_key,
       fp,
+      remote ? { id: remote.id } : null,
     );
 
     if (decision.action === "skip") {
@@ -81,21 +90,41 @@ export async function stepTags(
       continue;
     }
 
-    if (input.mode === "dry_run") {
-      if (decision.action === "create") created++;
-      else updated++;
+    // Para tags, el "update" no aplica — GHL no expone PUT de tags por
+    // PIT de location. Si decidimos "update" por adopt, simplemente
+    // registramos el id remoto en idempotency y skipamos el POST.
+    if (decision.action === "update") {
+      if (input.mode === "apply") {
+        await upsertResourceRecord(
+          input.project_id,
+          RESOURCE_KIND,
+          local_key,
+          decision.external_id,
+          fp,
+          run_id,
+        );
+      }
+      skipped++;
       items.push({
         local_key,
-        action: decision.action,
-        external_id:
-          decision.action === "update" ? decision.external_id : undefined,
+        action: "skip",
+        external_id: decision.external_id,
       });
       continue;
     }
 
-    // GHL solo soporta create de tags (no update/delete via location-id PIT
-    // de forma confiable). Si la fingerprint cambió, igual hacemos otro POST
-    // — el server deduplica.
+    if (input.mode === "dry_run") {
+      created++;
+      items.push({
+        local_key,
+        action: decision.action,
+      });
+      continue;
+    }
+
+    // GHL deduplica case-insensitive del lado del server, pero ya
+    // matcheamos por inventario antes así que llegamos acá solo si es
+    // realmente un tag nuevo.
     const res = await locationFetch<GhlTagResponse>(
       ctx,
       `/locations/${ctx.location_id}/tags`,

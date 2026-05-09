@@ -26,10 +26,11 @@
 import type { LocationContext, ProvisionInput, StepResult } from "../types";
 import { locationFetch } from "../location-client";
 import {
-  decideAction,
+  decideActionWithRemote,
   fingerprint,
   upsertResourceRecord,
 } from "../idempotency";
+import { findByNormalizedName } from "../normalize";
 
 const RESOURCE_KIND = "pipeline";
 
@@ -96,11 +97,20 @@ export async function stepPipelines(
     };
     const fp = fingerprint(payload);
 
-    const decision = await decideAction(
+    // Match contra inventario — pipelines se identifican por `name`.
+    // Si el snapshot trajo el "Customer Pipeline" default, podemos
+    // adoptarlo y reescribir sus stages.
+    const remote = findByNormalizedName(
+      input.inventory.pipelines.items,
+      p.name,
+    );
+
+    const decision = await decideActionWithRemote(
       input.project_id,
       RESOURCE_KIND,
       local_key,
       fp,
+      remote ? { id: remote.id } : null,
     );
 
     if (decision.action === "skip") {

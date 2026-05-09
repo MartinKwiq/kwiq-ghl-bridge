@@ -19,10 +19,11 @@
 import type { LocationContext, ProvisionInput, StepResult } from "../types";
 import { locationFetch } from "../location-client";
 import {
-  decideAction,
+  decideActionWithRemote,
   fingerprint,
   upsertResourceRecord,
 } from "../idempotency";
+import { findByNormalizedName, normalizeName } from "../normalize";
 
 const RESOURCE_KIND = "custom_value";
 
@@ -65,6 +66,11 @@ export async function stepCustomValues(
   // "sanity check" pero contradecía el contrato del dry-run y disparaba
   // 401s ruidosos cuando el location token no estaba todavía emitido.
 
+  // Inventario remoto — lo que ya existe en la sub-cuenta. El snapshot
+  // típicamente pre-puebla muchos custom_values con valores vacíos.
+  // Vamos a "adoptar" esos en lugar de crear duplicados.
+  const remoteItems = input.inventory.custom_values.items;
+
   for (const cv of cvs) {
     const local_key = cv.key;
     // GHL guarda custom values como strings. Serializamos otros tipos.
@@ -74,18 +80,24 @@ export async function stepCustomValues(
       ? cv.value
       : JSON.stringify(cv.value);
 
-    // GHL usa `name` como identificador humano; nosotros lo derivamos del key
-    // con formato title-case. El cliente puede editarlo después en la UI.
-    const name = humanize(local_key);
+    // GHL usa `name` como identificador humano. Si en el remoto ya existe
+    // un custom value con el mismo nombre normalizado (ej. snapshot trajo
+    // "Mail de contacto" y nuestro local_key es "mail_de_contacto"),
+    // usamos el `name` del remoto para no romper su casing/tildes.
+    const ourName = humanize(local_key);
+    const remote = findByNormalizedName(remoteItems, ourName) ??
+      findByNormalizedName(remoteItems, local_key);
 
+    const name = remote?.name ?? ourName;
     const payload = { name, value: valueStr };
     const fp = fingerprint(payload);
 
-    const decision = await decideAction(
+    const decision = await decideActionWithRemote(
       input.project_id,
       RESOURCE_KIND,
       local_key,
       fp,
+      remote ? { id: remote.id } : null,
     );
 
     if (decision.action === "skip") {

@@ -31,10 +31,11 @@
 import type { LocationContext, ProvisionInput, StepResult } from "../types";
 import { locationFetch } from "../location-client";
 import {
-  decideAction,
+  decideActionWithRemote,
   fingerprint,
   upsertResourceRecord,
 } from "../idempotency";
+import { findByNormalizedName } from "../normalize";
 
 const RESOURCE_KIND = "custom_field";
 
@@ -95,11 +96,20 @@ export async function stepCustomFields(
 
     const fp = fingerprint(payload);
 
-    const decision = await decideAction(
+    // Match contra inventario remoto: GHL devuelve `fieldKey` en el GET
+    // de customFields, así que matcheamos por `fieldKey` o `name`.
+    const remoteItems = input.inventory.custom_fields.items;
+    const remote =
+      findByNormalizedName(remoteItems, f.field_key, {
+        fields: ["fieldKey", "name"],
+      }) ?? findByNormalizedName(remoteItems, f.name, { fields: ["name"] });
+
+    const decision = await decideActionWithRemote(
       input.project_id,
       RESOURCE_KIND,
       local_key,
       fp,
+      remote ? { id: remote.id } : null,
     );
 
     if (decision.action === "skip") {

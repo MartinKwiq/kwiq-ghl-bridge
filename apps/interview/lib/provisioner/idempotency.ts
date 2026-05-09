@@ -123,3 +123,83 @@ export async function decideAction(
     reason: "fingerprint_changed",
   };
 }
+
+/**
+ * Decisión que considera además de la idempotency local, lo que ya
+ * existe en la sub-cuenta GHL (lo que viene del snapshot, o de runs
+ * previos sin idempotency table).
+ *
+ * Casos:
+ *
+ *  - Existe en remoto (id pasado por argumento) + idempotency tiene
+ *    el mismo id + fingerprint igual → skip.
+ *
+ *  - Existe en remoto + idempotency tiene el mismo id + fingerprint
+ *    distinto → update (PATCH/PUT sobre el id existente).
+ *
+ *  - Existe en remoto + idempotency NO tiene mapping para este
+ *    local_key → ADOPT: registrar el id externo en idempotency table
+ *    como si fuera nuestro, y emitir update. Útil cuando el snapshot
+ *    pre-pobló el recurso y ahora queremos llenarle el valor o
+ *    sobrescribir su descripción.
+ *
+ *  - No existe en remoto + idempotency tiene id viejo → STALE:
+ *    el recurso fue borrado en GHL fuera de Kwiq. Limpiamos el
+ *    idempotency record y emitimos create.
+ *
+ *  - No existe en remoto + idempotency vacío → create normal.
+ */
+export type IdempotencyDecisionWithRemote =
+  | { action: "create"; reason: "new" | "stale_record_cleared" }
+  | { action: "update"; external_id: string; reason: "fingerprint_changed" | "adopt_existing" }
+  | { action: "skip"; external_id: string; reason: "fingerprint_equal" };
+
+export async function decideActionWithRemote(
+  project_id: string,
+  resource_kind: string,
+  local_key: string,
+  new_fingerprint: string,
+  remote: { id: string } | null,
+): Promise<IdempotencyDecisionWithRemote> {
+  const existing = await getResourceRecord(project_id, resource_kind, local_key);
+
+  // Caso 1: existe en remoto.
+  if (remote) {
+    if (existing && existing.external_id === remote.id) {
+      // Mapping ya conocido — comparar fingerprint.
+      if (existing.fingerprint === new_fingerprint) {
+        return { action: "skip", external_id: existing.external_id, reason: "fingerprint_equal" };
+      }
+      return {
+        action: "update",
+        external_id: existing.external_id,
+        reason: "fingerprint_changed",
+      };
+    }
+    // No hay mapping local pero el remoto existe (snapshot, o run
+    // previo sin idempotency). Adoptamos: usamos el id remoto y
+    // emitimos un update para que nuestro valor pise lo que haya.
+    return {
+      action: "update",
+      external_id: remote.id,
+      reason: "adopt_existing",
+    };
+  }
+
+  // Caso 2: NO existe en remoto.
+  if (existing) {
+    // Tenemos un mapping viejo a un recurso que ya no está en GHL.
+    // Lo borramos del idempotency table para que el próximo run no
+    // intente updatear un id muerto. Emitimos create.
+    const admin = supabaseAdmin();
+    await admin
+      .from("kwiq_provisioning_resources")
+      .delete()
+      .eq("project_id", project_id)
+      .eq("resource_kind", resource_kind)
+      .eq("local_key", local_key);
+    return { action: "create", reason: "stale_record_cleared" };
+  }
+
+  return { action: "create", reason: "new" };
+}
