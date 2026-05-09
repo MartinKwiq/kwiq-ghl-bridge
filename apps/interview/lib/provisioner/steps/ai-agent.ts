@@ -101,12 +101,12 @@ export async function stepAiAgent(
     });
   }
 
-  // Validación: el prompt no debe exceder 2 000 caracteres del Form Bot.
-  if (!bundle.metadata.within_form_bot_limit) {
+  // Validación: el prompt no debe exceder 2 000 palabras del Conversation AI.
+  if (!bundle.metadata.within_ghl_limit) {
     items.push({
       local_key: "validation",
       action: "skip",
-      error: `El prompt tiene ${bundle.metadata.character_count} caracteres y excede el límite de 2 000 del Form Bot. Recortar antes de aplicar manualmente.`,
+      error: `El prompt tiene ${bundle.metadata.word_count} palabras y excede el límite de 2 000 de GHL Conversation AI. Recortar antes de aplicar manualmente.`,
     });
   }
 

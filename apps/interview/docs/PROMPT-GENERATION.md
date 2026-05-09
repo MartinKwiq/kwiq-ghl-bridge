@@ -62,8 +62,10 @@ export interface ConversationAIBundle {
     name: string;                  // nombre del agente (p.ej. "Sofía")
     language: string;
     tone: string;
+    word_count: number;            // mide en palabras (target 1200-1400)
     character_count: number;
-    within_form_bot_limit: boolean;
+    within_ghl_limit: boolean;     // true si word_count <= 2000
+    blocks: Array<{ name: string; words: number }>; // bloques que componen el prompt
   };
 }
 ```
