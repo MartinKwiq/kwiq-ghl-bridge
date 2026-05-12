@@ -53,6 +53,26 @@ const nextConfig: NextConfig = {
   // intacto para que el client component lo cargue vía import dinámico
   // y nuestro alias se aplique al bundle del cliente.
   serverExternalPackages: ["@huggingface/transformers", "onnxruntime-node"],
+  /**
+   * Bundle serverless de /entrevista/[token] excedió 250 MB en Vercel
+   * porque next.js copiaba node_modules/@huggingface/transformers (con
+   * todos los .node binaries de onnxruntime-node por arquitectura) al
+   * output trace de la función. Esos archivos NO se necesitan en
+   * runtime del servidor — el componente que los usa es 'use client' y
+   * los carga dinámicamente en el navegador.
+   *
+   * outputFileTracingExcludes le indica a Vercel/Next.js que ignore
+   * esos paths al construir el bundle de funciones serverless.
+   */
+  outputFileTracingExcludes: {
+    "*": [
+      "node_modules/@huggingface/transformers/**/*",
+      "node_modules/onnxruntime-node/**/*",
+      "node_modules/onnxruntime-web/**/*",
+      "node_modules/@xenova/**/*",
+      "node_modules/sharp/**/*",
+    ],
+  },
   logging: {
     fetches: {
       fullUrl: false,

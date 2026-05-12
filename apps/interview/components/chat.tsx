@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/logo";
@@ -10,8 +11,23 @@ import {
   HelperToggleButton,
 } from "@/components/interview/helper-card";
 import { getHelper, userIsAskingForHelp } from "@/lib/interview-helpers";
-import { VoiceInputButton } from "@/components/interview/voice-input-button";
 import { getSectionById, getQuestionById } from "@/lib/interview-schema";
+
+/**
+ * El VoiceInputButton importa @huggingface/transformers (Whisper local).
+ * Esa librería trae binarios nativos de onnxruntime-node por plataforma
+ * (~400MB) que NO debemos arrastrar al bundle serverless del servidor
+ * (Vercel tiene un límite duro de 250MB). Cargándolo con next/dynamic
+ * + ssr:false garantizamos que webpack lo separe en un chunk-client
+ * exclusivo y el server no lo vea nunca.
+ */
+const VoiceInputButton = dynamic(
+  () =>
+    import("@/components/interview/voice-input-button").then((m) => ({
+      default: m.VoiceInputButton,
+    })),
+  { ssr: false },
+);
 
 type Role = "user" | "assistant";
 interface UiMessage {
