@@ -112,9 +112,65 @@ export function VoiceInputButton({
     }
   }, []);
 
-  const start = useCallback(() => {
+  /**
+   * Pide permiso de micrófono explícitamente vía getUserMedia ANTES de
+   * arrancar SpeechRecognition. Sin este paso, algunos navegadores
+   * Chromium no-Chrome (Opera, Brave, Vivaldi) no muestran el prompt
+   * nativo de permisos cuando SpeechRecognition.start() pide acceso al
+   * mic, y el dictado falla silencioso.
+   *
+   * Chrome / Edge funcionan sin este paso porque ellos sí piden el
+   * permiso automáticamente al llamar a start(). Pero pedirlo dos veces
+   * no rompe nada — el browser sólo muestra el prompt la primera vez.
+   */
+  const ensureMicPermission = useCallback(async (): Promise<boolean> => {
+    // navigator.mediaDevices puede no existir en HTTP (solo HTTPS o localhost).
+    if (
+      typeof navigator === "undefined" ||
+      !navigator.mediaDevices ||
+      typeof navigator.mediaDevices.getUserMedia !== "function"
+    ) {
+      onError?.(
+        "Tu navegador no permite usar el micrófono en este sitio. Probá con Chrome o Edge, o accedé desde un dominio con HTTPS.",
+      );
+      return false;
+    }
+    try {
+      // Solo necesitamos la stream para disparar el prompt — la cerramos
+      // inmediatamente y dejamos que SpeechRecognition use su propio canal.
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+      });
+      stream.getTracks().forEach((t) => t.stop());
+      return true;
+    } catch (err) {
+      const name = err instanceof Error ? err.name : "";
+      if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+        onError?.(
+          "Bloqueaste el micrófono para este sitio. Activá los permisos del navegador (ícono de candado o cámara en la barra de URL) y probá de nuevo.",
+        );
+      } else if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+        onError?.(
+          "No detectamos micrófono en tu dispositivo. Conectá uno y probá de nuevo.",
+        );
+      } else {
+        onError?.(
+          "No pudimos acceder al micrófono. Verificá los permisos del navegador y probá de nuevo.",
+        );
+      }
+      return false;
+    }
+  }, [onError]);
+
+  const start = useCallback(async () => {
     const Ctor = getSpeechRecognitionCtor();
     if (!Ctor) return;
+
+    // Forzar el prompt de permisos antes de SpeechRecognition.start().
+    // Es lo que destraba el flow en Opera/Brave/Vivaldi.
+    const granted = await ensureMicPermission();
+    if (!granted) return;
+
     const recog = new Ctor();
     recog.lang = language;
     recog.continuous = true; // sigue escuchando hasta que el user clickee stop
@@ -185,7 +241,13 @@ export function VoiceInputButton({
   return (
     <button
       type="button"
-      onClick={() => (listening ? stop() : start())}
+      onClick={() => {
+        if (listening) {
+          stop();
+        } else {
+          void start();
+        }
+      }}
       disabled={disabled}
       title={
         listening

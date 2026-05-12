@@ -340,37 +340,43 @@ async function fetchUsers(ctx: {
 
 /**
  * Lista los folders (carpetas) de custom_fields. Estos los puede haber
- * creado el snapshot — el provisioner debe matchearlos por nombre para
- * resolver el `parentId` correcto al crear un custom_field nuevo en lugar
- * de mandar el nombre como string y dejar que GHL cree duplicados.
+ * creado el snapshot — el provisioner los matchea por nombre para
+ * resolver el `parentId` correcto al crear custom_fields y evitar
+ * folders duplicados.
  *
- * Si la API no soporta este endpoint en alguna sub-cuenta, fallamos
- * graceful con `fetched: false`.
+ * Endpoint según docs oficiales de GHL marketplace:
+ *   GET /custom-fields/folder/?locationId=<id>
+ *   Header: Location-Id (scope_location)
+ *
+ * Hasta noviembre 2026 GHL solo documenta CREATE/UPDATE/DELETE para
+ * folders, sin LIST público estable. Si la sub-cuenta no expone el GET
+ * (400/404/405), tratamos la sección como "vacía consultable" en lugar
+ * de "error" — el step custom-fields hace fallback al naming-as-string
+ * (comportamiento histórico) y no se rompe nada.
  */
 async function fetchCustomFieldFolders(ctx: {
   pit: string;
   location_id: string;
   company_id: string;
 }): Promise<InventorySection> {
-  // El endpoint dedicado puede o no existir según el plan de la sub-cuenta.
-  // Probamos el path documentado primero, y si vuelve 404 caemos a
-  // inferirlo desde los customFields (los que tienen parentId apuntan a
-  // un folder; juntamos los parentIds únicos pero sin nombres).
+  // Intentamos primero el endpoint top-level documentado (no
+  // /locations/{id}/customFields/folder — ese path no existe en GHL).
   const res = await locationFetch<{
-    folders?: Array<{
-      id: string;
-      name: string;
-      model?: string;
-    }>;
-    customFieldsFolder?: Array<{
-      id: string;
-      name: string;
-      model?: string;
-    }>;
-  }>(ctx, `/locations/${ctx.location_id}/customFields/folder`);
+    folders?: Array<{ id: string; name: string; model?: string }>;
+    customFieldsFolder?: Array<{ id: string; name: string; model?: string }>;
+    data?: Array<{ id: string; name: string; model?: string }>;
+  }>(
+    ctx,
+    `/custom-fields/folder/?locationId=${encodeURIComponent(ctx.location_id)}`,
+    { scope_location: true },
+  );
 
   if (res.ok) {
-    const arr = res.data?.folders ?? res.data?.customFieldsFolder ?? [];
+    const arr =
+      res.data?.folders ??
+      res.data?.customFieldsFolder ??
+      res.data?.data ??
+      [];
     const items = arr.map((f) => ({
       id: f.id,
       name: f.name,
@@ -379,10 +385,20 @@ async function fetchCustomFieldFolders(ctx: {
     return { count: items.length, items, fetched: true };
   }
 
-  // Fallback: si el endpoint dedicado no existe en este plan, no rompemos
-  // — el step custom-fields todavía puede crear folders pasando el nombre
-  // como string (comportamiento histórico). Solo perdemos el match-and-adopt
-  // de folders pre-existentes.
+  // Si el GET no está expuesto (400/404/405 son los códigos típicos
+  // cuando un endpoint solo soporta POST), no es un error útil para el
+  // admin. Lo marcamos como fetched OK pero vacío para que el UI lo
+  // muestre como "Vacío — no hay folders" en gris en vez de "error" en
+  // rojo. El step custom-fields va a usar el fallback de mandar `folder`
+  // como string si no encuentra match en inventory.
+  if (
+    res.status === 400 ||
+    res.status === 404 ||
+    res.status === 405
+  ) {
+    return { count: 0, items: [], fetched: true };
+  }
+
   return {
     count: 0,
     items: [],

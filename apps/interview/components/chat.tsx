@@ -228,17 +228,14 @@ export function Chat({
             sectionId: nextSectionDef.id,
             status: "in_progress",
           };
-          setMessages((m) => {
-            // Insertar el narrative ANTES del último mensaje (que es la
-            // pregunta del bot). Así el cliente lee primero el contexto
-            // de la sección y después la pregunta concreta.
-            const lastIdx = m.length - 1;
-            const lastMsg = lastIdx >= 0 ? m[lastIdx] : undefined;
-            if (!lastMsg || lastMsg.role !== "assistant") {
-              return [...m, narrative];
-            }
-            return [...m.slice(0, lastIdx), narrative, lastMsg];
-          });
+          // Insertamos el narrative DESPUÉS del último mensaje del bot.
+          // El último mensaje suele ser el cierre de la sección anterior
+          // ("Listo, terminamos esta sección. ¿Pasamos a la siguiente?")
+          // y queremos que el cliente lea primero el cierre y después
+          // la introducción de la nueva sección. La primera pregunta
+          // concreta de la nueva sección viene en el siguiente turno del
+          // bot, después de que el cliente responda.
+          setMessages((m) => [...m, narrative]);
         }
       }
       if (data.sectionAdvanced?.from) {
