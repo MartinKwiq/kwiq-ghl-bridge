@@ -123,8 +123,8 @@ export default async function InterviewLandingPage({
           <div className="rounded-xl border border-kwiq-accent/40 bg-kwiq-accent/10 px-4 py-3 text-sm text-kwiq-text">
             <strong>Guardamos tu progreso.</strong>{" "}
             <span className="text-kwiq-muted">
-              Cuando quieras seguir, entrá a la entrevista pausada abajo —
-              retomás exactamente donde quedaste.
+              Cuando quieras seguir, entra a la entrevista pausada abajo —
+              retomas exactamente donde quedaste.
             </span>
           </div>
         )}
@@ -137,9 +137,9 @@ export default async function InterviewLandingPage({
             Hola, {displayName}
           </h1>
           <p className="mt-2 max-w-2xl text-sm text-kwiq-muted">
-            Desde acá podés iniciar una entrevista nueva o retomar una que ya
-            habías empezado. Toda la información se guarda automáticamente —
-            podés pausar y volver cuando quieras.
+            Desde aquí puedes iniciar una entrevista nueva o retomar una que
+            ya habías empezado. Toda la información se guarda automáticamente
+            — puedes pausar y volver cuando quieras.
           </p>
           <div className="mt-5">
             <StartSessionButton />

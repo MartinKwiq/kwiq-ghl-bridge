@@ -154,7 +154,7 @@ export function VoiceInputButton({
         typeof navigator.mediaDevices.getUserMedia !== "function"
       ) {
         onError?.(
-          "Tu navegador no permite usar el micrófono en este sitio. Probá actualizar el navegador.",
+          "Tu navegador no permite usar el micrófono en este sitio. Prueba actualizar el navegador.",
         );
         return null;
       }
@@ -164,17 +164,17 @@ export function VoiceInputButton({
         const name = err instanceof Error ? err.name : "";
         if (name === "NotAllowedError" || name === "PermissionDeniedError") {
           onError?.(
-            "Bloqueaste el micrófono para este sitio. Activá los permisos del navegador (ícono de candado o cámara en la barra de URL) y probá de nuevo.",
+            "Bloqueaste el micrófono para este sitio. Activa los permisos del navegador (ícono de candado o cámara en la barra de URL) y prueba de nuevo.",
           );
         } else if (
           name === "NotFoundError" ||
           name === "DevicesNotFoundError"
         ) {
           onError?.(
-            "No detectamos micrófono en tu dispositivo. Conectá uno y probá de nuevo.",
+            "No detectamos micrófono en tu dispositivo. Conecta uno y prueba de nuevo.",
           );
         } else {
-          onError?.("No pudimos acceder al micrófono. Probá de nuevo.");
+          onError?.("No pudimos acceder al micrófono. Prueba de nuevo.");
         }
         return null;
       }
@@ -191,7 +191,7 @@ export function VoiceInputButton({
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         onError?.(
-          `No pudimos cargar el motor de voz: ${msg}. Probá recargar la página, o seguí escribiendo a mano.`,
+          `No pudimos cargar el motor de voz: ${msg}. Prueba recargar la página, o sigue escribiendo a mano.`,
         );
         setState({ kind: "idle" });
         return;
@@ -260,7 +260,7 @@ export function VoiceInputButton({
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         onError?.(
-          `No pudimos transcribir el audio: ${msg}. Probá de nuevo, o seguí escribiendo a mano.`,
+          `No pudimos transcribir el audio: ${msg}. Prueba de nuevo, o sigue escribiendo a mano.`,
         );
       } finally {
         setState({ kind: "idle" });
@@ -290,7 +290,7 @@ export function VoiceInputButton({
     state.kind === "loading_model"
       ? `Cargando motor de voz… ${Math.round((state.progress ?? 0) * 100)}%`
       : state.kind === "recording"
-        ? "Tocá para parar el dictado"
+        ? "Toca para parar el dictado"
         : state.kind === "transcribing"
           ? "Transcribiendo…"
           : "Dictar por micrófono";

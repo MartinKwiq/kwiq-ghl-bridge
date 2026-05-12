@@ -123,7 +123,7 @@ export const INTERVIEW: { version: string; sections: SectionDef[] } = {
       description:
         "Ayúdenos a entender más sobre la situación actual de su negocio y la forma en que se administra hoy.",
       narrative_intro:
-        "Arrancamos conociendo cómo trabajás hoy: cuánta gente atiende, cómo manejás cancelaciones, qué herramientas usás. Esto nos sirve para que tu asistente virtual entienda el contexto de tu negocio y responda como lo haría alguien de tu equipo, no como un bot genérico.",
+        "Empezamos conociendo cómo trabajas hoy: cuánta gente atiende, cómo manejas cancelaciones, qué herramientas usas. Esto nos sirve para que tu asistente virtual entienda el contexto de tu negocio y responda como lo haría alguien de tu equipo, no como un bot genérico.",
       questions: [
         // ── Esenciales: capturan la operación core para configurar el agente y los workflows.
         { id: "staff_atencion_dedicado", label: "¿Se cuenta con personal dedicado exclusivamente a la atención al cliente?", type: "text_long", output: { target: "context_note", key: "staff_atencion_dedicado" } },
@@ -158,7 +158,7 @@ export const INTERVIEW: { version: string; sections: SectionDef[] } = {
       description:
         "Antes de configurar GHL queremos entender qué ya tenés y qué podríamos ayudarte a construir. Respondé honestamente — si te falta algo, Kwiq lo puede armar.",
       narrative_intro:
-        "Antes de configurar tu CRM queremos saber qué piezas ya tenés (web, branding, dominio, WhatsApp Business). No es para venderte nada de prepo — es para que el equipo Kwiq sepa si tenemos que armar algo desde cero o solo conectar lo que ya existe. Respondé tranqui.",
+        "Antes de configurar tu CRM queremos saber qué piezas ya tienes (web, branding, dominio, WhatsApp Business). No es para venderte nada de golpe — es para que el equipo Kwiq sepa si hay que armar algo desde cero o solo conectar lo que ya existe. Responde con calma.",
       questions: [
         {
           id: "tiene_website",
@@ -219,7 +219,7 @@ export const INTERVIEW: { version: string; sections: SectionDef[] } = {
         "Datos fijos que se repiten y terminan como Custom Values en la Location de GHL (email, teléfono, web, redes, ubicaciones, servicios).",
       description: "Datos fijos de tu negocio que se repiten siempre (dirección, teléfono, precios, servicios, redes).",
       narrative_intro:
-        "Ahora vamos por la info que tu asistente virtual va a usar todo el día: nombre comercial, teléfono, dirección, web, redes. Esto se guarda como variables reutilizables en tu CRM — cuando un cliente pregunte 'dónde están ubicados', el bot ya tiene la respuesta exacta sin inventar.",
+        "Ahora vamos por la información que tu asistente virtual va a usar todo el día: nombre comercial, teléfono, dirección, web, redes sociales. Esto se guarda como variables reutilizables en tu CRM — cuando un cliente pregunte 'dónde están ubicados', el bot ya tiene la respuesta exacta sin inventar.",
       questions: [
         { id: "mail_contacto", label: "Mail de contacto", type: "email", output: { target: "ghl_custom_value", key: "mail_de_contacto", folder: "Contacto" } },
         { id: "pagina_web", label: "Página Web", type: "url", output: { target: "ghl_custom_value", key: "pagina_web", folder: "Contacto" } },
@@ -244,7 +244,7 @@ export const INTERVIEW: { version: string; sections: SectionDef[] } = {
       description:
         "Vamos a necesitar tus activos de marca — logo, paleta, tipografías. Si los tenés a mano, los podés arrastrar al chat. Si no, te damos un link para subirlos después.",
       narrative_intro:
-        "Pasamos a tu identidad visual: logo, colores, tipografías. Los archivos los podés arrastrar directo al chat. Esto se usa cuando armemos plantillas de emails, mensajes y material que tu asistente envía al cliente — para que todo se vea con tu marca, no con la de Kwiq.",
+        "Pasamos a tu identidad visual: logo, colores, tipografías. Los archivos los puedes arrastrar directo al chat. Esto se usa cuando armemos plantillas de correos, mensajes y material que tu asistente envía al cliente — para que todo se vea con tu marca, no con la de Kwiq.",
       questions: [
         {
           id: "marca_tiene_logo",
@@ -330,7 +330,7 @@ export const INTERVIEW: { version: string; sections: SectionDef[] } = {
       intent: "Por cada sucursal: nombre, dirección, Google Maps URL y URL de reseña. Van a Custom Values agrupados por letra (A, B, C…).",
       description: "Si tu negocio opera en varias sucursales, configuraremos una por cada una.",
       narrative_intro:
-        "Si atendés en más de un lugar (sucursales, sedes, oficinas), las cargamos acá una por una con dirección, Google Maps y link de reseñas. El asistente las usa para responder ubicación, dar indicaciones de cómo llegar y mandar el link correcto al cliente que te elige por zona.",
+        "Si atiendes en más de un lugar (sucursales, sedes, oficinas), las cargamos aquí una por una con dirección, Google Maps y enlace de reseñas. El asistente las usa para responder ubicación, dar indicaciones de cómo llegar y enviar el enlace correcto al cliente que te elige por zona.",
       repeatable: { unit: "ubicación", min: 1 },
       questions: [
         { id: "ubicacion_nombre", label: "Nombre de la ubicación (ej. Sucursal Polanco)", type: "text_short", output: { target: "ghl_custom_value", folder: "Ubicaciones", key: "ubicacion" } },
@@ -347,7 +347,7 @@ export const INTERVIEW: { version: string; sections: SectionDef[] } = {
       intent: "Usuarios que van a operar la plataforma. Se crearán como GHL Users con roles y permisos.",
       description: "Agreguemos a las personas que estarán interactuando con la plataforma.",
       narrative_intro:
-        "Toca cargar al equipo que va a usar el CRM: tu gente de atención, ventas o administración. Cada persona va a tener su propio acceso con permisos personalizados. Esto define quién puede ver qué (ej. si querés que ventas no vea ingresos, lo aclarás acá).",
+        "Toca cargar al equipo que va a usar el CRM: tu gente de atención, ventas o administración. Cada persona va a tener su propio acceso con permisos personalizados. Esto define quién puede ver qué (ejemplo: si quieres que ventas no vea ingresos, lo aclaras aquí).",
       repeatable: { unit: "persona", min: 1 },
       questions: [
         { id: "user_nombre", label: "Nombre completo", type: "text_short", output: { target: "ghl_user", key: "firstName+lastName" } },
@@ -365,7 +365,7 @@ export const INTERVIEW: { version: string; sections: SectionDef[] } = {
       intent: "Catálogo de servicios que la IA va a ofrecer. Va al prompt de Conversation AI y, si aplica, como productos en GHL.",
       description: "¿Cómo le presentas hoy a tus clientes tu oferta? Vamos uno por uno.",
       narrative_intro:
-        "Llegamos al catálogo: los servicios o productos que ofrecés. Cada uno con su nombre, precio público (si lo manejás abierto), duración. Esto es CRÍTICO porque tu asistente solo puede informar precios y reservar lo que está acá — todo lo que no esté cargado, lo va a derivar a una persona del equipo.",
+        "Llegamos al catálogo: los servicios o productos que ofreces. Cada uno con su nombre, precio público (si lo manejas abierto), duración. Esto es CRÍTICO porque tu asistente solo puede informar precios y reservar lo que está aquí cargado — todo lo que no esté cargado, lo va a derivar a una persona del equipo.",
       repeatable: { unit: "servicio", min: 1 },
       questions: [
         { id: "servicio_categoria", label: "Categoría del servicio", type: "text_short", output: { target: "ghl_service_product", key: "category" } },
@@ -389,7 +389,7 @@ export const INTERVIEW: { version: string; sections: SectionDef[] } = {
       intent: "Configuración de calendarios de GHL (Round Robin/Event/Service/Collective/Class).",
       description: "Configuremos cómo se organizan tus calendarios digitales.",
       narrative_intro:
-        "Vamos a configurar tus calendarios online. Esto define qué horarios tiene cada servicio, quién atiende cuándo, y de qué manera se reservan. Es lo que el asistente usa para mostrar al cliente los huecos reales disponibles — sin inventar horarios, sin doble-booking.",
+        "Vamos a configurar tus calendarios en línea. Esto define qué horarios tiene cada servicio, quién atiende cuándo y de qué manera se reservan. Es lo que el asistente usa para mostrar al cliente los espacios reales disponibles — sin inventar horarios, sin doble reserva.",
       repeatable: { unit: "calendario", min: 1 },
       questions: [
         { id: "cal_sucursal", label: "Código de sucursal al que pertenece", type: "text_short", output: { target: "ghl_calendar", key: "location_ref" } },
@@ -425,7 +425,7 @@ export const INTERVIEW: { version: string; sections: SectionDef[] } = {
       intent: "Preguntas adicionales que se le hacen al cliente/paciente antes o al momento de agendar. Se convierten en Custom Fields de tipo Contact.",
       description: "¿Qué datos adicionales pides a tus pacientes/clientes antes de su cita?",
       narrative_intro:
-        "Algunos negocios necesitan datos extra del cliente antes de la cita — ej. obra social, talla, motivo de consulta, alergias. Cargamos cada pregunta que querés hacer y el asistente las va a pedir en orden cuando alguien quiera agendar. Si no necesitás nada extra, podés saltear esta sección.",
+        "Algunos negocios necesitan datos extra del cliente antes de la cita — por ejemplo seguro médico, talla, motivo de consulta, alergias. Cargamos cada pregunta que quieras hacer y el asistente las va a pedir en orden cuando alguien quiera agendar. Si no necesitas nada extra, puedes saltar esta sección.",
       repeatable: { unit: "pregunta" },
       questions: [
         { id: "pregunta_texto", label: "Pregunta exacta que quieres hacer", type: "text_long", output: { target: "ghl_custom_field_contact", key: "label" } },
@@ -441,7 +441,7 @@ export const INTERVIEW: { version: string; sections: SectionDef[] } = {
       intent: "Pipeline de GHL con stages. Default sugerido viene cargado pero el cliente puede editar.",
       description: "Vamos a definir las etapas por las que pasa un lead. Ya tenemos una propuesta, podés ajustarla.",
       narrative_intro:
-        "Ahora definimos las etapas por las que pasa un cliente potencial — desde 'nuevo lead' hasta 'venta cerrada'. Te traemos una propuesta de base que funciona para la mayoría de negocios; la podés ajustar al vuelo. Esto te va a permitir ver en un tablero visual dónde está cada oportunidad.",
+        "Ahora definimos las etapas por las que pasa un cliente potencial — desde 'nuevo prospecto' hasta 'venta cerrada'. Te traemos una propuesta base que funciona para la mayoría de negocios; la puedes ajustar al instante. Esto te va a permitir ver en un tablero visual dónde está cada oportunidad.",
       repeatable: { unit: "etapa", min: 1 },
       questions: [
         { id: "stage_nombre", label: "Nombre de la etapa", type: "text_short", output: { target: "ghl_pipeline_stage", key: "name" } },
@@ -460,7 +460,7 @@ export const INTERVIEW: { version: string; sections: SectionDef[] } = {
       intent: "Tags especiales de GHL para segmentación. Vienen con un default sugerido.",
       description: "Etiquetas que queremos usar para segmentar contactos.",
       narrative_intro:
-        "Las etiquetas son la forma de agrupar contactos en tu CRM — ej. 'cliente VIP', 'interesado en blanqueamiento', 'paga con tarjeta'. Te permiten después armar campañas específicas para cada grupo. Definí qué grupos te interesa tener separados.",
+        "Las etiquetas son la forma de agrupar contactos en tu CRM — por ejemplo 'cliente VIP', 'interesado en blanqueamiento', 'paga con tarjeta'. Te permiten luego armar campañas específicas para cada grupo. Define qué grupos te interesa tener separados.",
       repeatable: { unit: "etiqueta" },
       questions: [
         { id: "tag_nombre", label: "Nombre de la lista/etiqueta", type: "text_short", output: { target: "ghl_tag", key: "name" } },
@@ -476,7 +476,7 @@ export const INTERVIEW: { version: string; sections: SectionDef[] } = {
       intent: "Reglas de cuándo y cómo transferir de la IA a un humano. Alimenta workflows de GHL y el prompt del agente.",
       description: "Cuándo la IA le pasa la conversación a alguien del equipo, y cómo se entera esa persona.",
       narrative_intro:
-        "El asistente virtual no va a manejar todo: hay momentos en que tiene que pasarle la conversación a una persona real. Definí acá cuáles son esos disparadores (urgencias, reclamos, decisiones grandes) y cómo querés que se avise al equipo (notificación en la app, correo, WhatsApp).",
+        "El asistente virtual no va a manejar todo: hay momentos en que tiene que pasarle la conversación a una persona real. Define aquí cuáles son esos disparadores (urgencias, reclamos, decisiones grandes) y cómo quieres que se avise al equipo (notificación en la app, correo, WhatsApp).",
       repeatable: { unit: "regla" },
       questions: [
         { id: "handoff_usuario", label: "Usuario asignado (de la sección Personal)", type: "text_short", output: { target: "ghl_workflow_handoff", key: "assignedUserId" } },
@@ -495,7 +495,7 @@ export const INTERVIEW: { version: string; sections: SectionDef[] } = {
       intent: "Custom Fields extra (más allá de los 52 default) que el negocio necesita para tracking propio.",
       description: "¿Qué información extra del cliente o de la oportunidad querés capturar?",
       narrative_intro:
-        "Más allá de los campos estándar (nombre, email, teléfono), a veces hay datos propios de tu negocio que querés guardar — número de socio, prepaga, tipo de vehículo, lo que sea. Cargá acá esos campos extra y los vamos a sumar al CRM.",
+        "Más allá de los campos estándar (nombre, correo, teléfono), a veces hay datos propios de tu negocio que quieres guardar — número de socio, seguro médico, tipo de vehículo, lo que sea. Carga aquí esos campos extra y los vamos a sumar al CRM.",
       repeatable: { unit: "campo" },
       questions: [
         { id: "cf_categoria", label: "Aplica a Contacto u Oportunidad", type: "select_single", options: ["Contacto", "Oportunidad"], output: { target: "ghl_custom_field_contact", key: "category" } },
@@ -514,7 +514,7 @@ export const INTERVIEW: { version: string; sections: SectionDef[] } = {
       description:
         "Necesitamos acceso temporal a tus cuentas. Al terminar salimos y vos actualizás contraseñas.",
       narrative_intro:
-        "Para que el equipo Kwiq pueda conectar tus redes y cuentas (Instagram, Facebook, dominio, hosting, etc.) necesitamos acceso temporal. Las credenciales se guardan cifradas y, una vez que terminamos la configuración, vos cambiás todas las contraseñas. Si preferís invitarnos a tu cuenta en lugar de pasar usuario/clave, también está bien.",
+        "Para que el equipo Kwiq pueda conectar tus redes y cuentas (Instagram, Facebook, dominio, hosting, etc.) necesitamos acceso temporal. Las credenciales se guardan cifradas y, una vez que terminamos la configuración, tú cambias todas las contraseñas. Si prefieres invitarnos a tu cuenta en lugar de compartir usuario y contraseña, también está bien.",
       repeatable: { unit: "activo" },
       questions: [
         { id: "asset_nombre", label: "Activo digital (Facebook, Instagram, GMB, Hosting, Dominio…)", type: "text_short", output: { target: "digital_asset_credential", key: "name" } },
@@ -532,7 +532,7 @@ export const INTERVIEW: { version: string; sections: SectionDef[] } = {
       intent: "Meta-sección que consolida toda la entrevista y produce el prompt final de Conversation AI.",
       description: "Definamos personalidad, límites y objetivos de tu asistente virtual.",
       narrative_intro:
-        "Última parada — diseñamos a tu asistente virtual. Le ponemos nombre, definimos su tono (cercano, formal, técnico), qué objetivos persigue y en qué casos pasa la conversación a una persona real. Esto se traduce directamente en cómo te va a representar 24/7 frente a tus clientes.",
+        "Última parada — diseñamos a tu asistente virtual. Le ponemos nombre, definimos su tono (cercano, formal, técnico), qué objetivos persigue y en qué casos pasa la conversación a una persona real. Esto se traduce directamente en cómo te va a representar 24/7 ante tus clientes.",
       questions: [
         {
           id: "ia_nombre",

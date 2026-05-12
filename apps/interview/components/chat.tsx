@@ -396,7 +396,7 @@ export function Chat({
                 void send();
               }
             }}
-            placeholder="Escribí tu respuesta o tocá el micrófono…"
+            placeholder="Escribe tu respuesta o toca el micrófono…"
             className="min-h-[44px] flex-1 resize-none rounded-lg border border-kwiq-border bg-kwiq-bg/60 px-3 py-2 text-sm outline-none focus:border-kwiq-accent"
           />
           <VoiceInputButton
@@ -566,15 +566,15 @@ function PauseConfirmModal({
           Pausar la entrevista
         </h3>
         <p className="mt-3 text-sm leading-relaxed text-kwiq-muted">
-          Guardamos tu progreso hasta acá — llevás{" "}
+          Guardamos tu progreso hasta aquí — llevas{" "}
           <strong className="text-kwiq-text">
             {completed} de {total} secciones
           </strong>{" "}
-          completas. Cuando vuelvas, retomás exactamente donde quedaste.
+          completas. Cuando vuelvas, retomas exactamente donde quedaste.
         </p>
         <p className="mt-3 text-xs text-kwiq-muted">
-          Tu cuenta se queda logueada en este navegador, así que podés volver
-          entrando a tu panel desde cualquier dispositivo con el mismo email.
+          Tu cuenta se queda iniciada en este navegador, así que puedes volver
+          entrando a tu panel desde cualquier dispositivo con el mismo correo.
         </p>
 
         <div className="mt-6 flex justify-end gap-2">
@@ -584,7 +584,7 @@ function PauseConfirmModal({
             disabled={pausing}
             className="rounded-lg border border-kwiq-border px-3 py-1.5 text-sm text-kwiq-muted hover:text-kwiq-text disabled:opacity-50"
           >
-            Seguir charlando
+            Seguir conversando
           </button>
           <button
             type="button"

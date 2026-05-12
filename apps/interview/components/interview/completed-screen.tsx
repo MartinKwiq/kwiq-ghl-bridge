@@ -96,7 +96,7 @@ export function InterviewCompletedScreen({
 
         <section className="rounded-xl border border-kwiq-border bg-kwiq-panel/40 p-5 text-sm text-kwiq-muted">
           <p>
-            Si necesitás corregir alguna respuesta o agregar algo que se te
+            Si necesitas corregir alguna respuesta o agregar algo que se te
             haya olvidado, contactá al equipo Kwiq directamente. Toda la
             configuración es reversible.
           </p>

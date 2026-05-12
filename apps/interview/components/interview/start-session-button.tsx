@@ -31,8 +31,8 @@ export function StartSessionButton({
       if (!res.ok || !body.token) {
         setError(
           body.error === "not_authenticated"
-            ? "Tu sesión expiró. Volvé a entrar."
-            : "No pudimos arrancar la sesión. Probá de nuevo.",
+            ? "Tu sesión expiró. Vuelve a entrar."
+            : "No pudimos iniciar la sesión. Prueba de nuevo.",
         );
         return;
       }
