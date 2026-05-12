@@ -255,15 +255,21 @@ async function fetchPipelines(ctx: {
   location_id: string;
   company_id: string;
 }): Promise<InventorySection> {
-  // El endpoint de pipelines NO incluye locationId en el path, va en
-  // header — usamos scope_location: true.
+  // GHL /opportunities/pipelines exige `locationId` como query param
+  // (no es suficiente el header). Sin él devuelve
+  //   422 "locationId can't be undefined".
+  // Sigue siendo necesario también el header Location-Id (scope_location).
   const res = await locationFetch<{
     pipelines?: Array<{
       id: string;
       name: string;
       stages?: Array<{ id: string; name: string; position?: number }>;
     }>;
-  }>(ctx, `/opportunities/pipelines`, { scope_location: true });
+  }>(
+    ctx,
+    `/opportunities/pipelines?locationId=${encodeURIComponent(ctx.location_id)}`,
+    { scope_location: true },
+  );
   if (!res.ok) {
     return { count: 0, items: [], fetched: false, error: `${res.status}: ${res.message}` };
   }
