@@ -607,6 +607,7 @@ function ClientRow({
 }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [resendMsg, setResendMsg] = useState<string | null>(null);
 
   const status = deriveClientStatus(client);
 
@@ -639,6 +640,42 @@ function ClientRow({
     }
   }
 
+  async function resendInvite() {
+    setBusy(true);
+    setErr(null);
+    setResendMsg(null);
+    try {
+      const res = await fetch(
+        `/api/admin/users/${client.user_id}/resend-invite`,
+        { method: "POST" },
+      );
+      const body = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        email?: string;
+        action_link?: string | null;
+        error?: string;
+        detail?: string;
+        message?: string;
+      };
+      if (!res.ok || !body.ok) {
+        setErr(
+          body.detail ||
+            body.message ||
+            body.error ||
+            "No pudimos reenviar la invitación.",
+        );
+        return;
+      }
+      setResendMsg(
+        `Mandamos un correo nuevo a ${body.email}. Vence en 48h.`,
+      );
+    } catch {
+      setErr("Error de red al reenviar la invitación.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <>
       <tr className="border-t border-kwiq-border text-kwiq-text">
@@ -659,14 +696,27 @@ function ClientRow({
         </td>
         <td className="px-3 py-2 text-right">
           {canEdit && (
-            <button
-              type="button"
-              onClick={() => void remove()}
-              disabled={busy}
-              className="text-xs text-kwiq-err hover:underline disabled:opacity-50"
-            >
-              {busy ? "Borrando…" : "Eliminar"}
-            </button>
+            <div className="flex items-center justify-end gap-3">
+              {status === "invited" && (
+                <button
+                  type="button"
+                  onClick={() => void resendInvite()}
+                  disabled={busy}
+                  className="text-xs text-kwiq-accent hover:underline disabled:opacity-50"
+                  title="Manda un correo nuevo con el magic link (válido 48h)"
+                >
+                  {busy ? "Enviando…" : "Reenviar invitación"}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => void remove()}
+                disabled={busy}
+                className="text-xs text-kwiq-err hover:underline disabled:opacity-50"
+              >
+                {busy ? "Borrando…" : "Eliminar"}
+              </button>
+            </div>
           )}
         </td>
       </tr>
@@ -677,6 +727,16 @@ function ClientRow({
             className="px-3 py-2 text-xs text-kwiq-err bg-kwiq-err/5"
           >
             {err}
+          </td>
+        </tr>
+      )}
+      {resendMsg && (
+        <tr className="border-t border-kwiq-border">
+          <td
+            colSpan={6}
+            className="px-3 py-2 text-xs text-kwiq-ok bg-kwiq-ok/5"
+          >
+            {resendMsg}
           </td>
         </tr>
       )}
