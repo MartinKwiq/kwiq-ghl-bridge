@@ -194,7 +194,7 @@ export function VoiceInputButton({
             : code === "audio-capture"
               ? "No pude usar el micrófono. ¿Hay otro programa usándolo?"
               : code === "network"
-                ? "Hubo un problema de red al transcribir."
+                ? "El dictado por voz necesita conexión a los servidores de Google y algo lo está bloqueando. Probables causas: VPN activo, escudos del navegador (Brave Shields), o bloqueo de DNS. Probá desactivar el VPN/escudos, o usar Chrome puro. Mientras tanto podés seguir escribiendo a mano."
                 : "El dictado se cortó. Probá de nuevo o seguí escribiendo.";
       onError?.(msg);
     };
