@@ -299,17 +299,34 @@ function StepRow({ step }: { step: StepResult }) {
             {items.map((it, i) => (
               <li
                 key={`${it.local_key}-${i}`}
-                className="flex items-center justify-between gap-2 rounded border border-kwiq-border/50 bg-kwiq-bg/40 px-2 py-1"
+                className={
+                  "flex flex-col gap-1 rounded border border-kwiq-border/50 bg-kwiq-bg/40 px-2 py-1 " +
+                  (it.error
+                    ? "border-kwiq-err/30 bg-kwiq-err/5"
+                    : "")
+                }
               >
-                <span className="font-mono">{it.local_key}</span>
-                <span className="flex items-center gap-2">
-                  <ItemActionBadge action={it.action} />
-                  {it.external_id && (
-                    <span className="font-mono text-[10px] text-kwiq-muted">
-                      {it.external_id}
-                    </span>
-                  )}
-                </span>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="break-all font-mono">{it.local_key}</span>
+                  <span className="flex items-center gap-2">
+                    <ItemActionBadge action={it.action} />
+                    {it.external_id && (
+                      <span
+                        className="font-mono text-[10px] text-kwiq-muted"
+                        title={it.external_id}
+                      >
+                        {it.external_id.length > 12
+                          ? `${it.external_id.slice(0, 12)}…`
+                          : it.external_id}
+                      </span>
+                    )}
+                  </span>
+                </div>
+                {it.error && (
+                  <p className="text-[11px] leading-snug text-kwiq-err">
+                    {it.error}
+                  </p>
+                )}
               </li>
             ))}
           </ul>

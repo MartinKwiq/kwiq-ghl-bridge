@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/logo";
 import { BrandingUploader } from "@/components/branding-uploader";
@@ -10,6 +10,8 @@ import {
   HelperToggleButton,
 } from "@/components/interview/helper-card";
 import { getHelper, userIsAskingForHelp } from "@/lib/interview-helpers";
+import { VoiceInputButton } from "@/components/interview/voice-input-button";
+import { getSectionById, getQuestionById } from "@/lib/interview-schema";
 
 type Role = "user" | "assistant";
 interface UiMessage {
@@ -71,10 +73,32 @@ export function Chat({
     [currentQuestionId],
   );
 
+  // Sugerencias del schema para la pregunta activa (ej. nombres del agente IA).
+  const activeSuggestions = useMemo(() => {
+    if (!currentQuestionId) return undefined;
+    const q = getQuestionById(currentQuestionId);
+    return q?.suggestions;
+  }, [currentQuestionId]);
+
   // Si cambia la pregunta activa, cerramos el helper anterior.
   useEffect(() => {
     setHelperOpen(false);
   }, [currentQuestionId]);
+
+  // Indicador "voz activa" — solo para mostrar visualmente que estamos
+  // dictando. La transcripción se va metiendo en el input directamente.
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const handleVoiceTranscript = useCallback(
+    (text: string, isFinal: boolean) => {
+      // Para parciales: pisamos lo "in-progress" del último dictado.
+      // Para finales: acumulamos sobre lo que ya había en el textarea.
+      setInput((prev) => {
+        if (isFinal) return (prev ? prev + " " : "") + text.trim();
+        return prev; // no actualizamos en parciales para no parpadear
+      });
+    },
+    [],
+  );
 
   const progressPct = useMemo(() => {
     if (sections.length === 0) return 0;
@@ -191,6 +215,31 @@ export function Chat({
           id: data.sectionAdvanced.to,
           title: nextSection?.title ?? data.sectionAdvanced.to,
         });
+
+        // Mensaje narrativo: si la próxima sección tiene narrative_intro en el
+        // schema, lo insertamos como un bubble del asistente ANTES del mensaje
+        // real del LLM. Le explica al cliente para qué sirve la sección que
+        // acaba de empezar. Si no hay narrative_intro, no mostramos nada extra.
+        const nextSectionDef = getSectionById(data.sectionAdvanced.to);
+        if (nextSectionDef?.narrative_intro) {
+          const narrative: UiMessage = {
+            role: "assistant",
+            content: nextSectionDef.narrative_intro,
+            sectionId: nextSectionDef.id,
+            status: "in_progress",
+          };
+          setMessages((m) => {
+            // Insertar el narrative ANTES del último mensaje (que es la
+            // pregunta del bot). Así el cliente lee primero el contexto
+            // de la sección y después la pregunta concreta.
+            const lastIdx = m.length - 1;
+            const lastMsg = lastIdx >= 0 ? m[lastIdx] : undefined;
+            if (!lastMsg || lastMsg.role !== "assistant") {
+              return [...m, narrative];
+            }
+            return [...m.slice(0, lastIdx), narrative, lastMsg];
+          });
+        }
       }
       if (data.sectionAdvanced?.from) {
         // Marcar la sección que se acaba de completar para que la barra de
@@ -312,6 +361,26 @@ export function Chat({
         </div>
       )}
 
+      {voiceError && (
+        <div className="mx-6 mb-2 rounded-md border border-kwiq-warn/40 bg-kwiq-warn/10 px-3 py-2 text-sm text-kwiq-warn">
+          {voiceError}
+          <button
+            type="button"
+            onClick={() => setVoiceError(null)}
+            className="ml-2 text-xs underline"
+          >
+            Cerrar
+          </button>
+        </div>
+      )}
+
+      {activeSuggestions && activeSuggestions.length > 0 && !sending && (
+        <SuggestionStrip
+          suggestions={activeSuggestions}
+          onPick={(value) => setInput(value)}
+        />
+      )}
+
       <form
         className="border-t border-kwiq-border px-6 py-4"
         onSubmit={(e) => {
@@ -330,8 +399,13 @@ export function Chat({
                 void send();
               }
             }}
-            placeholder="Escribí tu respuesta…"
+            placeholder="Escribí tu respuesta o tocá el micrófono…"
             className="min-h-[44px] flex-1 resize-none rounded-lg border border-kwiq-border bg-kwiq-bg/60 px-3 py-2 text-sm outline-none focus:border-kwiq-accent"
+          />
+          <VoiceInputButton
+            onTranscript={handleVoiceTranscript}
+            onError={setVoiceError}
+            disabled={sending}
           />
           {activeHelper && (
             <HelperToggleButton
@@ -354,6 +428,52 @@ export function Chat({
           </button>
         </div>
       </form>
+    </div>
+  );
+}
+
+/**
+ * Tira de chips con sugerencias preconfiguradas en el schema. Aparece arriba
+ * del input cuando la pregunta activa tiene `suggestions[]` definidas.
+ * Hover muestra la razón creativa; click llena el textarea (no envía solo,
+ * el cliente puede editar antes).
+ */
+function SuggestionStrip({
+  suggestions,
+  onPick,
+}: {
+  suggestions: Array<{ value: string; why: string }>;
+  onPick: (value: string) => void;
+}) {
+  return (
+    <div className="border-t border-kwiq-border bg-kwiq-panel/30 px-6 py-3">
+      <div className="mx-auto max-w-3xl">
+        <p className="mb-2 text-[10px] uppercase tracking-[0.18em] text-kwiq-muted">
+          Sugerencias · click para usar
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {suggestions.map((s) => (
+            <button
+              key={s.value}
+              type="button"
+              onClick={() => onPick(s.value)}
+              title={s.why}
+              className="group relative rounded-full border border-kwiq-border bg-kwiq-bg/60 px-3 py-1 text-xs text-kwiq-text transition hover:border-kwiq-accent hover:bg-kwiq-accent/5 hover:text-kwiq-accent"
+            >
+              <span className="font-medium">{s.value}</span>
+              <span className="ml-1.5 text-[10px] text-kwiq-muted group-hover:text-kwiq-accent/70">
+                ⓘ
+              </span>
+              <span
+                className="invisible absolute bottom-full left-1/2 z-20 mb-2 -translate-x-1/2 whitespace-normal rounded-md border border-kwiq-border bg-kwiq-panel px-3 py-2 text-[11px] leading-snug text-kwiq-text shadow-xl group-hover:visible"
+                style={{ width: "240px" }}
+              >
+                {s.why}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

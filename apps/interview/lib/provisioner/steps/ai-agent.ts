@@ -102,11 +102,23 @@ export async function stepAiAgent(
   }
 
   // Validación: el prompt no debe exceder 2 000 palabras del Conversation AI.
-  if (!bundle.metadata.within_ghl_limit) {
+  // Tolerante a bundles viejos persistidos en derived_outputs: si la metadata
+  // no trae `word_count` (formato pre-v2), lo computamos al vuelo a partir
+  // del prompt. Y si tampoco viene `within_ghl_limit`, lo derivamos.
+  const m = bundle.metadata as Record<string, unknown>;
+  const wordCount =
+    typeof m.word_count === "number"
+      ? (m.word_count as number)
+      : bundle.prompt.trim().split(/\s+/).filter(Boolean).length;
+  const withinLimit =
+    typeof m.within_ghl_limit === "boolean"
+      ? (m.within_ghl_limit as boolean)
+      : wordCount <= 2000;
+  if (!withinLimit) {
     items.push({
       local_key: "validation",
       action: "skip",
-      error: `El prompt tiene ${bundle.metadata.word_count} palabras y excede el límite de 2 000 de GHL Conversation AI. Recortar antes de aplicar manualmente.`,
+      error: `El prompt tiene ${wordCount} palabras y excede el límite de 2 000 de GHL Conversation AI. Recortar antes de aplicar manualmente.`,
     });
   }
 
