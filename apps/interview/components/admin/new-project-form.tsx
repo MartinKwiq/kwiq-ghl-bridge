@@ -12,6 +12,17 @@ import {
 
 type AuthMode = "pit_agency" | "pit_location" | "oauth_marketplace";
 
+/**
+ * `create`: la app llama a la API de GHL para crear la sub-cuenta desde
+ *   cero con los datos del form. Es el flow por defecto histórico.
+ * `import`: la sub-cuenta YA existe en GHL (la creó otra persona o vos
+ *   directamente desde el dashboard GHL). El admin pega el `location_id`
+ *   y la app solo crea el row de kwiq_projects apuntando a esa location.
+ *   No se dispara ningún fetch contra GHL. El resto del flow (PIT,
+ *   inventario, entrevista, provisioner) funciona idéntico.
+ */
+type CreationMode = "create" | "import";
+
 interface SnapshotOption {
   id: string;
   name: string;
@@ -48,6 +59,12 @@ export function NewProjectForm() {
     invite_message?: string;
     invite_email?: string;
   } | null>(null);
+
+  // ─── Modo de alta del proyecto ─────────────────────────────────────
+  // create  → la app crea la sub-cuenta en GHL desde cero.
+  // import  → la sub-cuenta ya existe en GHL; solo la registramos acá.
+  const [creationMode, setCreationMode] = useState<CreationMode>("create");
+  const [importLocationId, setImportLocationId] = useState("");
 
   // ─── Cliente Kwiq ───────────────────────────────────────────────────
   const [clientName, setClientName] = useState("");
@@ -127,6 +144,16 @@ export function NewProjectForm() {
     if (suggested) setBusinessTimezone(suggested);
   }, [businessCountry]);
 
+  // En modo importar nunca se llama a GHL para crear. Forzamos el toggle
+  // a false y bloqueamos la UI del checkbox abajo.
+  useEffect(() => {
+    if (creationMode === "import") {
+      setCreateGhlLocation(false);
+    } else {
+      setCreateGhlLocation(true);
+    }
+  }, [creationMode]);
+
   function autoSlug(name: string) {
     if (slug) return; // no pisamos si el admin ya lo editó
     const next = name
@@ -146,8 +173,20 @@ export function NewProjectForm() {
     setLoading(true);
     setError(null);
 
-    // Si va a crear la sub-cuenta, validamos campos obligatorios client-side.
-    if (createGhlLocation) {
+    // Validaciones específicas por modo.
+    if (creationMode === "import") {
+      // En modo importar lo único obligatorio (además de slug + cliente)
+      // es el location_id que ya existe en GHL.
+      const lid = importLocationId.trim();
+      if (!lid) {
+        setError(
+          "En modo importar necesitamos el Location ID de la sub-cuenta que ya existe en GHL. Lo encontrás en GHL Agency dashboard → Sub-Accounts → click en la sub-cuenta → Settings, o en la URL cuando estás dentro de la sub-cuenta.",
+        );
+        setLoading(false);
+        return;
+      }
+    } else if (createGhlLocation) {
+      // Modo crear: validamos los campos que necesita la API de GHL.
       const missing: string[] = [];
       if (!businessName.trim()) missing.push("nombre del negocio");
       if (!adminFirstName.trim()) missing.push("nombre del admin");
@@ -177,6 +216,7 @@ export function NewProjectForm() {
     const finalSnapshotId = snapshotIdManual.trim() || snapshotId || null;
 
     try {
+      const isImporting = creationMode === "import";
       const payload: Record<string, unknown> = {
         client_name: clientName.trim(),
         slug: slug.trim(),
@@ -198,10 +238,14 @@ export function NewProjectForm() {
         business_timezone: businessTimezone || null,
         business_lat: businessLat,
         business_lng: businessLng,
-        snapshot_id: finalSnapshotId,
-        create_ghl_location: createGhlLocation,
+        snapshot_id: isImporting ? null : finalSnapshotId,
+        // En modo importar nunca se crea la sub-cuenta en GHL.
+        create_ghl_location: isImporting ? false : createGhlLocation,
         invite_client: inviteClientOnSave,
       };
+      if (isImporting) {
+        payload.ghl_location_id = importLocationId.trim();
+      }
       if (authMode === "pit_location" && pit.trim()) {
         payload.ghl_pit = pit.trim();
       }
@@ -371,9 +415,50 @@ export function NewProjectForm() {
   }
 
   const needsPit = authMode === "pit_location";
+  const isImporting = creationMode === "import";
 
   return (
     <form className="flex flex-col gap-6" onSubmit={submit}>
+      {/* ─── Modo de alta ──────────────────────────────────────── */}
+      <Section
+        title="Modo de alta"
+        subtitle="¿La sub-cuenta GHL hay que crearla ahora o ya existe?"
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          <ModeCard
+            active={creationMode === "create"}
+            onClick={() => setCreationMode("create")}
+            title="Crear nueva sub-cuenta"
+            description="La app llama a GHL y crea la sub-cuenta desde cero con los datos que cargues abajo. Aplica el snapshot que elijas. Es el flow que usaste con Sonrisa Andina."
+          />
+          <ModeCard
+            active={creationMode === "import"}
+            onClick={() => setCreationMode("import")}
+            title="Importar sub-cuenta existente"
+            description="Ya existe una sub-cuenta en GHL (vacía o con cosas dentro) y solo querés registrarla acá para que el cliente haga la entrevista. Solo necesitamos el Location ID."
+          />
+        </div>
+
+        {isImporting && (
+          <Field
+            label="Location ID de GHL"
+            hint="Lo encontrás en GHL Agency dashboard → Sub-Accounts → click en la sub-cuenta → Settings → Business Info → Location ID. También aparece en la URL cuando estás dentro: …/location/<location_id>/…"
+            required
+          >
+            <input
+              type="text"
+              required
+              value={importLocationId}
+              onChange={(e) => setImportLocationId(e.target.value.trim())}
+              placeholder="abcdefghijklmnop1234"
+              maxLength={64}
+              autoComplete="off"
+              className={cn(inputCls, "font-mono")}
+            />
+          </Field>
+        )}
+      </Section>
+
       {/* ─── Cliente Kwiq ──────────────────────────────────────── */}
       <Section title="Cliente Kwiq" subtitle="Cómo lo llamamos internamente.">
         <div className="grid gap-4 sm:grid-cols-2">
@@ -435,13 +520,15 @@ export function NewProjectForm() {
         )}
       </Section>
 
+      {!isImporting && (
+      <>
       {/* ─── Datos del negocio ────────────────────────────────── */}
       <Section title="Datos del negocio" subtitle="Lo que se va a crear como sub-cuenta en GHL.">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Nombre del negocio" hint="Como aparece en facturas y en GHL." required>
             <input
               type="text"
-              required={createGhlLocation}
+              required={createGhlLocation && !isImporting}
               maxLength={200}
               value={businessName}
               onChange={(e) => setBusinessName(e.target.value)}
@@ -468,7 +555,7 @@ export function NewProjectForm() {
           <Field label="Teléfono del negocio" hint="Con código de país. Ej. +52 55 1234 5678." required>
             <input
               type="tel"
-              required={createGhlLocation}
+              required={createGhlLocation && !isImporting}
               value={businessPhone}
               onChange={(e) => setBusinessPhone(e.target.value)}
               placeholder="+5215512345678"
@@ -493,7 +580,7 @@ export function NewProjectForm() {
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="País" required>
             <select
-              required={createGhlLocation}
+              required={createGhlLocation && !isImporting}
               value={businessCountry}
               onChange={(e) => setBusinessCountry(e.target.value)}
               className={inputCls}
@@ -508,7 +595,7 @@ export function NewProjectForm() {
 
           <Field label="Timezone" required>
             <select
-              required={createGhlLocation}
+              required={createGhlLocation && !isImporting}
               value={businessTimezone}
               onChange={(e) => setBusinessTimezone(e.target.value)}
               className={inputCls}
@@ -573,7 +660,7 @@ export function NewProjectForm() {
           <Field label="Nombre" required>
             <input
               type="text"
-              required={createGhlLocation}
+              required={createGhlLocation && !isImporting}
               maxLength={80}
               value={adminFirstName}
               onChange={(e) => setAdminFirstName(e.target.value)}
@@ -585,7 +672,7 @@ export function NewProjectForm() {
           <Field label="Apellido" required>
             <input
               type="text"
-              required={createGhlLocation}
+              required={createGhlLocation && !isImporting}
               maxLength={80}
               value={adminLastName}
               onChange={(e) => setAdminLastName(e.target.value)}
@@ -597,7 +684,7 @@ export function NewProjectForm() {
           <Field label="Email del admin" hint="También se usa como email de contacto Kwiq." required>
             <input
               type="email"
-              required={createGhlLocation}
+              required={createGhlLocation && !isImporting}
               maxLength={254}
               value={contactEmail}
               onChange={(e) => setContactEmail(e.target.value)}
@@ -658,29 +745,65 @@ export function NewProjectForm() {
           />
         </Field>
       </Section>
+      </>
+      )}
+
+      {isImporting && (
+        <Section
+          title="Email de contacto del cliente"
+          subtitle="Lo usamos para mandarle el magic link de la entrevista. No tiene que ser el mismo que el usuario admin en GHL."
+        >
+          <Field label="Email" required>
+            <input
+              type="email"
+              required
+              maxLength={254}
+              value={contactEmail}
+              onChange={(e) => setContactEmail(e.target.value)}
+              placeholder="maria@acme.com"
+              className={inputCls}
+            />
+          </Field>
+        </Section>
+      )}
 
       {/* ─── Toggles automáticos ─────────────────────────────── */}
       <Section
         title="Automáticos al guardar"
         subtitle="Estos pasos se disparan solos para que vos no tengas que ir a otra pantalla. Si alguno falla, el proyecto queda guardado y podés reintentar después."
       >
-        <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-kwiq-border bg-kwiq-bg/40 px-3 py-3">
-          <input
-            type="checkbox"
-            checked={createGhlLocation}
-            onChange={(e) => setCreateGhlLocation(e.target.checked)}
-            className="mt-0.5"
-          />
-          <span className="flex flex-col gap-1 text-sm">
+        {!isImporting && (
+          <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-kwiq-border bg-kwiq-bg/40 px-3 py-3">
+            <input
+              type="checkbox"
+              checked={createGhlLocation}
+              onChange={(e) => setCreateGhlLocation(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span className="flex flex-col gap-1 text-sm">
+              <span className="text-kwiq-text">
+                Crear la sub-cuenta en GHL
+              </span>
+              <span className="text-xs text-kwiq-muted">
+                Llamamos a GHL para crear la sub-cuenta con los datos de arriba.
+                Aplicamos el snapshot elegido si hay uno.
+              </span>
+            </span>
+          </label>
+        )}
+
+        {isImporting && (
+          <div className="rounded-lg border border-kwiq-accent/30 bg-kwiq-accent/5 px-3 py-3 text-sm">
             <span className="text-kwiq-text">
-              Crear la sub-cuenta en GHL
+              ✓ Importando sub-cuenta existente
             </span>
-            <span className="text-xs text-kwiq-muted">
-              Llamamos a GHL para crear la sub-cuenta con los datos de arriba.
-              Aplicamos el snapshot elegido si hay uno.
-            </span>
-          </span>
-        </label>
+            <p className="mt-1 text-xs text-kwiq-muted">
+              La app NO va a tocar GHL al guardar — solo registra el proyecto
+              apuntando al Location ID que pegaste arriba. Después cargás el
+              PIT y sincronizás inventario desde el detalle del proyecto.
+            </p>
+          </div>
+        )}
 
         <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-kwiq-border bg-kwiq-bg/40 px-3 py-3">
           <input
@@ -737,8 +860,12 @@ export function NewProjectForm() {
           )}
         >
           {loading
-            ? "Creando…"
-            : submitButtonLabel(createGhlLocation, inviteClientOnSave)}
+            ? "Guardando…"
+            : submitButtonLabel(
+                creationMode,
+                createGhlLocation,
+                inviteClientOnSave,
+              )}
         </button>
         <button
           type="button"
@@ -754,6 +881,56 @@ export function NewProjectForm() {
 
 const inputCls =
   "w-full rounded-lg border border-kwiq-border bg-kwiq-bg/60 px-3 py-2 text-sm outline-none focus:border-kwiq-accent";
+
+/**
+ * Card clickable para elegir entre "crear nueva" e "importar existente".
+ * Visual de radio sin radio-button — toda la card es la zona de click.
+ */
+function ModeCard({
+  active,
+  onClick,
+  title,
+  description,
+}: {
+  active: boolean;
+  onClick: () => void;
+  title: string;
+  description: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex flex-col gap-1 rounded-lg border px-3 py-3 text-left text-sm transition",
+        active
+          ? "border-kwiq-accent bg-kwiq-accent/10"
+          : "border-kwiq-border bg-kwiq-bg/40 hover:border-kwiq-accent/60",
+      )}
+      aria-pressed={active}
+    >
+      <span
+        className={cn(
+          "flex items-center gap-2 font-medium",
+          active ? "text-kwiq-accent" : "text-kwiq-text",
+        )}
+      >
+        <span
+          className={cn(
+            "inline-flex h-4 w-4 items-center justify-center rounded-full border",
+            active
+              ? "border-kwiq-accent bg-kwiq-accent text-kwiq-bg"
+              : "border-kwiq-border",
+          )}
+        >
+          {active ? "✓" : ""}
+        </span>
+        {title}
+      </span>
+      <span className="text-xs text-kwiq-muted">{description}</span>
+    </button>
+  );
+}
 
 function Section({
   title,
@@ -828,7 +1005,16 @@ function isAuthError(message: string | undefined): boolean {
  * Texto del botón submit según los toggles activos. Se hace explícito qué va
  * a hacer el click para que el admin no tenga sorpresas.
  */
-function submitButtonLabel(createGhl: boolean, invite: boolean): string {
+function submitButtonLabel(
+  mode: CreationMode,
+  createGhl: boolean,
+  invite: boolean,
+): string {
+  if (mode === "import") {
+    return invite
+      ? "Importar proyecto + invitar cliente"
+      : "Importar proyecto";
+  }
   if (createGhl && invite) return "Crear proyecto + sub-cuenta + invitar cliente";
   if (createGhl) return "Crear proyecto + sub-cuenta GHL";
   if (invite) return "Crear proyecto + invitar cliente";
