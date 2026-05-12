@@ -76,9 +76,30 @@ export async function stepCustomFields(
     };
   }
 
+  // Helper: resolver el id de un folder en GHL desde el inventario remoto.
+  // El snapshot Kwiq base puede traer folders pre-creadas ("Personales",
+  // "Médicos") con su id. Si el `folder` del autoconfig coincide por
+  // nombre normalizado con uno del inventario, usamos su id como parentId
+  // y evitamos que GHL cree un folder duplicado.
+  const folderInv = input.inventory.custom_field_folders;
+  function resolveFolderParentId(folderName?: string | null): string | null {
+    if (!folderName) return null;
+    const matches = folderInv?.items ?? [];
+    if (matches.length === 0) return null;
+    const found = findByNormalizedName(matches, folderName, {
+      fields: ["name"],
+    });
+    return found?.id ?? null;
+  }
+
   for (const f of fields) {
     if (!f.field_key || !f.name) continue;
     const local_key = `${f.model ?? "contact"}:${f.field_key}`;
+
+    // Si el autoconfig declaró un folder, intentamos mapearlo a un parentId
+    // existente. Si no existe en GHL, dejamos parentId vacío y GHL crea el
+    // folder con el nombre que mandamos (comportamiento histórico).
+    const parentId = resolveFolderParentId(f.folder);
 
     // Payload normalizado para GHL.
     const payload: Record<string, unknown> = {
@@ -86,6 +107,13 @@ export async function stepCustomFields(
       dataType: f.data_type || "TEXT",
       model: f.model || "contact",
       placeholder: f.name,
+      // Si encontramos parentId del folder, lo mandamos. Si no, mandamos
+      // `folder` como string para que GHL lo cree.
+      ...(parentId
+        ? { parentId }
+        : f.folder
+          ? { folder: f.folder }
+          : {}),
       // GHL pide `options` como objetos { name, value } cuando aplica.
       ...(f.options && f.options.length > 0
         ? {

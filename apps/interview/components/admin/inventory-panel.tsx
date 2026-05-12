@@ -24,6 +24,8 @@ interface InventoryEntry {
   value?: string | null;
   stages?: Array<{ id: string; name: string; position?: number }>;
   email?: string;
+  parentId?: string;
+  isActive?: boolean;
 }
 
 interface InventorySection {
@@ -40,9 +42,11 @@ interface InventoryReport {
   tags: InventorySection;
   custom_values: InventorySection;
   custom_fields: InventorySection;
+  custom_field_folders?: InventorySection;
   pipelines: InventorySection;
   calendars: InventorySection;
   users: InventorySection;
+  ai_agents?: InventorySection;
 }
 
 export function InventoryPanel({
@@ -70,9 +74,12 @@ export function InventoryPanel({
           tags: cachedReport.tags.count > 0,
           custom_values: cachedReport.custom_values.count > 0,
           custom_fields: cachedReport.custom_fields.count > 0,
+          custom_field_folders:
+            (cachedReport.custom_field_folders?.count ?? 0) > 0,
           pipelines: cachedReport.pipelines.count > 0,
           calendars: cachedReport.calendars.count > 0,
           users: cachedReport.users.count > 0,
+          ai_agents: (cachedReport.ai_agents?.count ?? 0) > 0,
         }
       : {},
   );
@@ -105,9 +112,11 @@ export function InventoryPanel({
         tags: r.tags.count > 0,
         custom_values: r.custom_values.count > 0,
         custom_fields: r.custom_fields.count > 0,
+        custom_field_folders: (r.custom_field_folders?.count ?? 0) > 0,
         pipelines: r.pipelines.count > 0,
         calendars: r.calendars.count > 0,
         users: r.users.count > 0,
+        ai_agents: (r.ai_agents?.count ?? 0) > 0,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error inesperado.");
@@ -256,6 +265,31 @@ export function InventoryPanel({
             )}
           />
 
+          {report.custom_field_folders && (
+            <Section
+              label="Folders de Custom Fields (carpetas pre-creadas por snapshot)"
+              kind="custom_field_folders"
+              section={report.custom_field_folders}
+              open={openSections.custom_field_folders ?? false}
+              onToggle={() =>
+                setOpenSections((s) => ({
+                  ...s,
+                  custom_field_folders: !s.custom_field_folders,
+                }))
+              }
+              renderItem={(item) => (
+                <div className="flex flex-wrap items-baseline gap-2">
+                  <span className="text-kwiq-text">{item.name}</span>
+                  {item.model && (
+                    <span className="text-xs text-kwiq-muted">
+                      ({item.model})
+                    </span>
+                  )}
+                </div>
+              )}
+            />
+          )}
+
           <Section
             label="Pipelines (embudos de venta)"
             kind="pipelines"
@@ -323,6 +357,34 @@ export function InventoryPanel({
               </div>
             )}
           />
+
+          {report.ai_agents && (
+            <Section
+              label="Agentes de Conversation AI (bots ya activos en la sub-cuenta)"
+              kind="ai_agents"
+              section={report.ai_agents}
+              open={openSections.ai_agents ?? false}
+              onToggle={() =>
+                setOpenSections((s) => ({
+                  ...s,
+                  ai_agents: !s.ai_agents,
+                }))
+              }
+              renderItem={(item) => (
+                <div className="flex flex-wrap items-baseline gap-2">
+                  <span className="text-kwiq-text">{item.name ?? "—"}</span>
+                  {item.isActive && (
+                    <span className="rounded-full border border-kwiq-ok/40 bg-kwiq-ok/10 px-2 py-0.5 text-[10px] uppercase tracking-widest text-kwiq-ok">
+                      Activo
+                    </span>
+                  )}
+                  <code className="rounded bg-kwiq-bg/60 px-1.5 py-0.5 font-mono text-[11px] text-kwiq-muted">
+                    {item.id}
+                  </code>
+                </div>
+              )}
+            />
+          )}
         </div>
       )}
     </section>

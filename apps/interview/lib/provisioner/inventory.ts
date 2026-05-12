@@ -24,6 +24,10 @@ export interface InventoryEntry {
   value?: string | null;
   stages?: Array<{ id: string; name: string; position?: number }>;
   email?: string;
+  /** Id del folder al que pertenece (para custom_fields). */
+  parentId?: string;
+  /** Si el agente IA está activo (para ai_agents). */
+  isActive?: boolean;
 }
 
 export interface InventorySection {
@@ -40,9 +44,13 @@ export interface InventoryReport {
   tags: InventorySection;
   custom_values: InventorySection;
   custom_fields: InventorySection;
+  /** Folders/carpetas de custom_fields (pre-creados por snapshot). */
+  custom_field_folders?: InventorySection;
   pipelines: InventorySection;
   calendars: InventorySection;
   users: InventorySection;
+  /** Agentes Conversation AI (pre-creados por snapshot). */
+  ai_agents?: InventorySection;
 }
 
 /** Inventario considerado vencido si tiene más de N horas. */

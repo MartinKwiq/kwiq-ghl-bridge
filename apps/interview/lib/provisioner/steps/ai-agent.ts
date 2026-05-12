@@ -177,47 +177,62 @@ export async function stepAiAgent(
     };
   }
 
-  // Buscamos agentes existentes en la sub-cuenta (típicamente cargados via
-  // snapshot Kwiq base). Si hay uno, lo actualizamos. Si no, registramos
-  // el bundle como "pendiente de activación manual".
-  const listRes = await locationFetch<GhlBotsList>(
-    ctx,
-    `/conversation-ai/bots?locationId=${ctx.location_id}`,
-    { scope_location: true },
-  );
+  // Buscamos agentes existentes vía el inventario remoto que ya cargó el
+  // orquestador (ver lib/provisioner/run.ts). El snapshot Kwiq base
+  // típicamente trae un agente pre-creado — lo adoptamos en lugar de
+  // crear un duplicado.
+  //
+  // Si el inventario no incluye la sección ai_agents (sub-cuenta vieja
+  // antes de Sprint #120) o si la API de GHL no la soportó (404/405),
+  // caemos al fetch ad-hoc para mantener el comportamiento histórico.
+  const aiInv = input.inventory.ai_agents;
+  let existingBots: GhlBot[] = [];
 
-  if (!listRes.ok) {
-    // Si lista 404 o 405, asumimos que el endpoint todavía no está
-    // disponible en esta sub-cuenta — no es un error fatal.
-    if (listRes.status === 404 || listRes.status === 405) {
-      items.push({
-        local_key,
-        action: "skip",
-        error:
-          "GHL todavía no expone /conversation-ai/bots para esta sub-cuenta. El bundle se persistió en derived_outputs — copialo manualmente al panel del agente IA.",
-      });
+  if (aiInv?.fetched) {
+    existingBots = aiInv.items.map((b) => ({
+      id: b.id,
+      name: b.name,
+      isActive: b.isActive,
+    }));
+  } else {
+    const listRes = await locationFetch<GhlBotsList>(
+      ctx,
+      `/conversation-ai/bots?locationId=${ctx.location_id}`,
+      { scope_location: true },
+    );
+
+    if (!listRes.ok) {
+      if (listRes.status === 404 || listRes.status === 405) {
+        items.push({
+          local_key,
+          action: "skip",
+          error:
+            "GHL todavía no expone /conversation-ai/bots para esta sub-cuenta. El bundle se persistió en derived_outputs — copialo manualmente al panel del agente IA.",
+        });
+        return {
+          step: "ai_agent",
+          status: "ok",
+          created,
+          updated,
+          skipped: skipped + 1,
+          duration_ms: Date.now() - started,
+          items,
+        };
+      }
       return {
         step: "ai_agent",
-        status: "ok",
+        status: "error",
         created,
         updated,
-        skipped: skipped + 1,
+        skipped,
         duration_ms: Date.now() - started,
-        items,
+        error_message: `GET /conversation-ai/bots: ${listRes.status} ${listRes.message}`,
       };
     }
-    return {
-      step: "ai_agent",
-      status: "error",
-      created,
-      updated,
-      skipped,
-      duration_ms: Date.now() - started,
-      error_message: `GET /conversation-ai/bots: ${listRes.status} ${listRes.message}`,
-    };
+
+    existingBots = listRes.data?.bots ?? listRes.data?.data ?? [];
   }
 
-  const existingBots = listRes.data?.bots ?? listRes.data?.data ?? [];
   const targetBot = existingBots.find((b) => b.isActive) ?? existingBots[0];
 
   if (!targetBot) {

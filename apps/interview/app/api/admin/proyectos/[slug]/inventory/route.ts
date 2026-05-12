@@ -37,6 +37,10 @@ interface InventoryEntry {
   value?: string | null;
   stages?: Array<{ id: string; name: string; position?: number }>;
   email?: string;
+  /** Para custom_fields: id del folder al que pertenece (si está en uno). */
+  parentId?: string;
+  /** Para ai_agents: si el agente está activo. */
+  isActive?: boolean;
   raw?: Record<string, unknown>;
 }
 
@@ -54,9 +58,17 @@ interface InventoryReport {
   tags: InventorySection;
   custom_values: InventorySection;
   custom_fields: InventorySection;
+  /** Folders/carpetas de custom_fields. El snapshot puede pre-crearlas, y
+   *  el provisioner las matchea por nombre normalizado para resolver el
+   *  `parentId` correcto al crear/actualizar custom fields. */
+  custom_field_folders: InventorySection;
   pipelines: InventorySection;
   calendars: InventorySection;
   users: InventorySection;
+  /** Conversation AI agents activos en la sub-cuenta. La API es limitada
+   *  (puede devolver 404 según el plan); por eso lleva `fetched: false`
+   *  con error en lugar de romper si no responde. */
+  ai_agents: InventorySection;
 }
 
 export async function GET(_req: Request, { params }: RouteParams) {
@@ -107,15 +119,25 @@ export async function GET(_req: Request, { params }: RouteParams) {
 
   // Llamadas en paralelo. Cada una resuelve a InventorySection — si falla,
   // queda fetched: false con el error_message, pero no aborta las demás.
-  const [tags, customValues, customFields, pipelines, calendars, users] =
-    await Promise.all([
-      fetchTags(ctx),
-      fetchCustomValues(ctx),
-      fetchCustomFields(ctx),
-      fetchPipelines(ctx),
-      fetchCalendars(ctx),
-      fetchUsers(ctx),
-    ]);
+  const [
+    tags,
+    customValues,
+    customFields,
+    customFieldFolders,
+    pipelines,
+    calendars,
+    users,
+    aiAgents,
+  ] = await Promise.all([
+    fetchTags(ctx),
+    fetchCustomValues(ctx),
+    fetchCustomFields(ctx),
+    fetchCustomFieldFolders(ctx),
+    fetchPipelines(ctx),
+    fetchCalendars(ctx),
+    fetchUsers(ctx),
+    fetchAIAgents(ctx),
+  ]);
 
   const report: InventoryReport = {
     location_id: project.ghl_location_id,
@@ -124,9 +146,11 @@ export async function GET(_req: Request, { params }: RouteParams) {
     tags,
     custom_values: customValues,
     custom_fields: customFields,
+    custom_field_folders: customFieldFolders,
     pipelines,
     calendars,
     users,
+    ai_agents: aiAgents,
   };
 
   // Persistir el snapshot para que el provisioner pueda razonar sobre él
@@ -209,6 +233,7 @@ async function fetchCustomFields(ctx: {
       fieldKey?: string;
       dataType?: string;
       model?: string;
+      parentId?: string;
     }>;
   }>(ctx, `/locations/${ctx.location_id}/customFields`);
   if (!res.ok) {
@@ -220,6 +245,7 @@ async function fetchCustomFields(ctx: {
     fieldKey: cf.fieldKey,
     dataType: cf.dataType,
     model: cf.model,
+    parentId: cf.parentId,
   }));
   return { count: items.length, items, fetched: true };
 }
@@ -302,6 +328,103 @@ async function fetchUsers(ctx: {
       [u.firstName, u.lastName].filter(Boolean).join(" ") ??
       undefined,
     email: u.email,
+  }));
+  return { count: items.length, items, fetched: true };
+}
+
+/**
+ * Lista los folders (carpetas) de custom_fields. Estos los puede haber
+ * creado el snapshot — el provisioner debe matchearlos por nombre para
+ * resolver el `parentId` correcto al crear un custom_field nuevo en lugar
+ * de mandar el nombre como string y dejar que GHL cree duplicados.
+ *
+ * Si la API no soporta este endpoint en alguna sub-cuenta, fallamos
+ * graceful con `fetched: false`.
+ */
+async function fetchCustomFieldFolders(ctx: {
+  pit: string;
+  location_id: string;
+  company_id: string;
+}): Promise<InventorySection> {
+  // El endpoint dedicado puede o no existir según el plan de la sub-cuenta.
+  // Probamos el path documentado primero, y si vuelve 404 caemos a
+  // inferirlo desde los customFields (los que tienen parentId apuntan a
+  // un folder; juntamos los parentIds únicos pero sin nombres).
+  const res = await locationFetch<{
+    folders?: Array<{
+      id: string;
+      name: string;
+      model?: string;
+    }>;
+    customFieldsFolder?: Array<{
+      id: string;
+      name: string;
+      model?: string;
+    }>;
+  }>(ctx, `/locations/${ctx.location_id}/customFields/folder`);
+
+  if (res.ok) {
+    const arr = res.data?.folders ?? res.data?.customFieldsFolder ?? [];
+    const items = arr.map((f) => ({
+      id: f.id,
+      name: f.name,
+      model: f.model,
+    }));
+    return { count: items.length, items, fetched: true };
+  }
+
+  // Fallback: si el endpoint dedicado no existe en este plan, no rompemos
+  // — el step custom-fields todavía puede crear folders pasando el nombre
+  // como string (comportamiento histórico). Solo perdemos el match-and-adopt
+  // de folders pre-existentes.
+  return {
+    count: 0,
+    items: [],
+    fetched: false,
+    error: `${res.status}: ${res.message}`,
+  };
+}
+
+/**
+ * Lista los agentes de Conversation AI configurados en la sub-cuenta. El
+ * snapshot Kwiq base puede traer un agente pre-creado — el provisioner
+ * lo adopta vía UPDATE en vez de crear uno nuevo.
+ *
+ * La API es marcada como "beta" por GHL y puede devolver 404/405 según
+ * el plan de la sub-cuenta. Fallamos graceful para no romper el sync de
+ * inventario por una sola sección.
+ */
+async function fetchAIAgents(ctx: {
+  pit: string;
+  location_id: string;
+  company_id: string;
+}): Promise<InventorySection> {
+  const res = await locationFetch<{
+    bots?: Array<{ id: string; name?: string; isActive?: boolean }>;
+    data?: Array<{ id: string; name?: string; isActive?: boolean }>;
+  }>(
+    ctx,
+    `/conversation-ai/bots?locationId=${encodeURIComponent(ctx.location_id)}`,
+    { scope_location: true },
+  );
+
+  if (!res.ok) {
+    return {
+      count: 0,
+      items: [],
+      fetched: false,
+      error:
+        res.status === 404 || res.status === 405
+          ? "GHL no expone /conversation-ai/bots para esta sub-cuenta (plan o feature flag)."
+          : `${res.status}: ${res.message}`,
+    };
+  }
+
+  const arr = res.data?.bots ?? res.data?.data ?? [];
+  const items = arr.map((b) => ({
+    id: b.id,
+    name: b.name,
+    isActive: b.isActive,
   }));
   return { count: items.length, items, fetched: true };
 }
