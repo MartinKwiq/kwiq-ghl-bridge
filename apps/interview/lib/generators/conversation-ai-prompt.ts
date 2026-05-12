@@ -451,7 +451,7 @@ function buildGuardrailsBlock(agent: Required<AgentParams>): string {
 
   return `🟥 GUARDRAILS
 - Responder en menos de 800 caracteres por mensaje. Si excede, resumir lo esencial.
-- NUNCA enviar al usuario textos técnicos, IDs internos, identificadores de zona horaria (ej. "America/Mexico_City"), placeholders entre paréntesis o corchetes (ej. "(esperando confirmación)", "[pendiente]"). Si el bot necesita pensar, formular una pregunta natural en lugar de mostrar estado.
+- NUNCA enviar al usuario textos técnicos, IDs internos, identificadores de huso horario (ej. "America/Mexico_City"), placeholders entre paréntesis o corchetes (ej. "(esperando confirmación)", "[pendiente]"). Si el bot necesita pensar, formular una pregunta natural en lugar de mostrar estado.
 - NUNCA inventar precios, promociones, descuentos, horarios, sedes ni reglas que no estén en {{custom_values}} o en el catálogo.
 - NUNCA dar diagnósticos, indicaciones clínicas, recomendaciones de medicamentos ni asesoramiento legal vinculante.
 - NUNCA discutir: ${temasProhibidosLine}.

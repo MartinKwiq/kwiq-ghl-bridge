@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { Chat, type ChatSection } from "@/components/chat";
+import { InterviewCompletedScreen } from "@/components/interview/completed-screen";
 import { getSectionById, sectionOrder } from "@/lib/interview-schema";
 import { supabaseAdmin, supabaseServer } from "@/lib/supabase/server";
 
@@ -47,7 +48,7 @@ export default async function InterviewPage({
   const { data: session } = await admin
     .from("interview_sessions")
     .select(
-      "id, session_token, current_section_id, status, completed_section_ids, user_id, project_id",
+      "id, session_token, current_section_id, status, completed_section_ids, completed_at, user_id, project_id",
     )
     .eq("session_token", token)
     .maybeSingle();
@@ -73,6 +74,29 @@ export default async function InterviewPage({
 
   if (!isOwner && !isAdmin) {
     notFound();
+  }
+
+  // Si la entrevista ya está completada → pantalla de cierre en lugar
+  // del chat. Sirve para que el cliente sepa qué pasa después y no
+  // quede flotando dentro del chat de una sesión terminada.
+  if (session.status === "completed" || session.completed_at) {
+    // Resolvemos el nombre del cliente (si existe en kwiq_interview_users).
+    let clientName: string | null = null;
+    if (session.user_id) {
+      const { data: clientRow } = await admin
+        .from("kwiq_interview_users")
+        .select("display_name, company_name")
+        .eq("user_id", session.user_id)
+        .maybeSingle();
+      clientName =
+        clientRow?.display_name ?? clientRow?.company_name ?? null;
+    }
+    return (
+      <InterviewCompletedScreen
+        clientName={clientName}
+        completedAt={session.completed_at}
+      />
+    );
   }
 
   // Auto-resume: si la sesión estaba pausada y el cliente llegó al chat,
