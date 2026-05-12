@@ -105,9 +105,16 @@ export async function middleware(req: NextRequest) {
     // el Server Component en /interview/page.tsx y los endpoints API.
   }
 
-  // Si ya logueado y va a /interview/login, mandamos a la landing cliente.
+  // Si ya logueado y va a /interview/login, mandamos al `next` (si vino) o
+  // a la landing cliente. Validamos que `next` sea una ruta interna para
+  // evitar open-redirect.
   if (isClientLoginPage && user) {
-    return NextResponse.redirect(new URL("/interview", req.url));
+    const nextParam = req.nextUrl.searchParams.get("next");
+    const safeNext =
+      nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//")
+        ? nextParam
+        : "/interview";
+    return NextResponse.redirect(new URL(safeNext, req.url));
   }
 
   return res;
