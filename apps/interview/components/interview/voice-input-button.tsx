@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import { MicTutorialModal } from "@/components/interview/mic-tutorial-modal";
 
 /**
  * Botón de dictado por micrófono UNIVERSAL.
@@ -295,69 +296,95 @@ export function VoiceInputButton({
           ? "Transcribiendo…"
           : "Dictar por micrófono";
 
+  // Estado del tutorial. Auto-open la primera vez por localStorage; también
+  // se puede reabrir clickeando el botón "?".
+  const [tutorialOpen, setTutorialOpen] = useState(false);
+
   return (
-    <button
-      type="button"
-      onClick={() => {
-        if (isRecording) stopRecording();
-        else if (!isBusy) void startRecording();
-      }}
-      disabled={isDisabled}
-      title={title}
-      aria-label={title}
-      aria-pressed={isRecording}
-      className={cn(
-        "flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border text-lg transition",
-        isRecording &&
-          "border-kwiq-err/60 bg-kwiq-err/10 text-kwiq-err animate-pulse",
-        isBusy &&
-          "border-kwiq-accent/40 bg-kwiq-accent/10 text-kwiq-accent",
-        !isRecording &&
-          !isBusy &&
-          "border-kwiq-border bg-kwiq-bg/60 text-kwiq-muted hover:border-kwiq-accent hover:text-kwiq-accent",
-        isDisabled && "cursor-not-allowed opacity-50",
-      )}
-    >
-      {state.kind === "loading_model" ? (
-        <span className="text-[10px] font-medium">
-          {Math.round((state.progress ?? 0) * 100)}%
-        </span>
-      ) : state.kind === "transcribing" ? (
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="18"
-          height="18"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="animate-spin"
-          aria-hidden
+    <>
+      <div className="relative shrink-0">
+        <button
+          type="button"
+          onClick={() => {
+            if (isRecording) stopRecording();
+            else if (!isBusy) void startRecording();
+          }}
+          disabled={isDisabled}
+          title={title}
+          aria-label={title}
+          aria-pressed={isRecording}
+          className={cn(
+            "flex h-11 w-11 items-center justify-center rounded-lg border text-lg transition",
+            isRecording &&
+              "border-kwiq-err/60 bg-kwiq-err/10 text-kwiq-err animate-pulse",
+            isBusy &&
+              "border-kwiq-accent/40 bg-kwiq-accent/10 text-kwiq-accent",
+            !isRecording &&
+              !isBusy &&
+              "border-kwiq-border bg-kwiq-bg/60 text-kwiq-muted hover:border-kwiq-accent hover:text-kwiq-accent",
+            isDisabled && "cursor-not-allowed opacity-50",
+          )}
         >
-          <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-        </svg>
-      ) : (
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden
+          {state.kind === "loading_model" ? (
+            <span className="text-[10px] font-medium">
+              {Math.round((state.progress ?? 0) * 100)}%
+            </span>
+          ) : state.kind === "transcribing" ? (
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="animate-spin"
+              aria-hidden
+            >
+              <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+            </svg>
+          ) : (
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+              <line x1="12" y1="19" x2="12" y2="23" />
+              <line x1="8" y1="23" x2="16" y2="23" />
+            </svg>
+          )}
+        </button>
+
+        {/* Botón "?" en la esquina superior derecha del mic — abre el
+            tutorial cuando el cliente quiera repasarlo. */}
+        <button
+          type="button"
+          onClick={() => setTutorialOpen(true)}
+          title="Ver cómo funciona el dictado por voz"
+          aria-label="Ver cómo funciona el dictado por voz"
+          className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full border border-kwiq-border bg-kwiq-panel text-[10px] font-bold text-kwiq-muted hover:border-kwiq-accent hover:text-kwiq-accent"
         >
-          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-          <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-          <line x1="12" y1="19" x2="12" y2="23" />
-          <line x1="8" y1="23" x2="16" y2="23" />
-        </svg>
-      )}
-    </button>
+          ?
+        </button>
+      </div>
+
+      <MicTutorialModal
+        autoOpenOnFirstVisit
+        open={tutorialOpen || undefined}
+        onClose={() => setTutorialOpen(false)}
+      />
+    </>
   );
 }
 
