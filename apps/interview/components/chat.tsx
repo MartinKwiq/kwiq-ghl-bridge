@@ -12,6 +12,7 @@ import {
 } from "@/components/interview/helper-card";
 import { getHelper, userIsAskingForHelp } from "@/lib/interview-helpers";
 import { getSectionById, getQuestionById } from "@/lib/interview-schema";
+import { OnboardingTutorialModal } from "@/components/interview/onboarding-tutorial-modal";
 
 /**
  * El VoiceInputButton importa @huggingface/transformers (Whisper local).
@@ -81,6 +82,7 @@ export function Chat({
   );
   const [pausing, setPausing] = useState(false);
   const [confirmPause, setConfirmPause] = useState(false);
+  const [tutorialOpen, setTutorialOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Helper para la pregunta activa, si existe.
@@ -295,6 +297,15 @@ export function Chat({
           <div className="flex items-center gap-2">
             <button
               type="button"
+              onClick={() => setTutorialOpen(true)}
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-kwiq-border text-xs font-bold text-kwiq-muted hover:border-kwiq-accent hover:text-kwiq-accent"
+              title="Ver cómo funciona la entrevista"
+              aria-label="Ver tutorial"
+            >
+              ?
+            </button>
+            <button
+              type="button"
               onClick={() => setConfirmPause(true)}
               disabled={pausing}
               className="rounded-lg border border-kwiq-border px-3 py-1.5 text-xs text-kwiq-muted hover:border-kwiq-accent hover:text-kwiq-accent disabled:cursor-not-allowed disabled:opacity-50"
@@ -441,6 +452,12 @@ export function Chat({
           </button>
         </div>
       </form>
+
+      <OnboardingTutorialModal
+        autoOpenOnFirstVisit
+        open={tutorialOpen || undefined}
+        onClose={() => setTutorialOpen(false)}
+      />
     </div>
   );
 }
