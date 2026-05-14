@@ -38,12 +38,19 @@ export function MicTutorialModal({
 }) {
   const [internalOpen, setInternalOpen] = useState(false);
 
-  // Auto-open la primera vez (chequeando localStorage).
+  // Auto-open la primera vez (chequeando localStorage). Marcamos el flag
+  // apenas se abre — no al cerrar — para que aunque el cliente recargue
+  // la página o cierre el navegador con el modal abierto, no vuelva a
+  // aparecer solo. Sigue disponible el botón "?" al lado del mic para
+  // reabrirlo manualmente.
   useEffect(() => {
     if (!autoOpenOnFirstVisit) return;
     try {
       const seen = window.localStorage.getItem(STORAGE_KEY);
-      if (!seen) setInternalOpen(true);
+      if (!seen) {
+        setInternalOpen(true);
+        window.localStorage.setItem(STORAGE_KEY, "1");
+      }
     } catch {
       /* localStorage bloqueado — no rompemos el chat */
     }
@@ -52,11 +59,7 @@ export function MicTutorialModal({
   const isOpen = open ?? internalOpen;
 
   function handleClose() {
-    try {
-      window.localStorage.setItem(STORAGE_KEY, "1");
-    } catch {
-      /* noop */
-    }
+    // El flag ya quedó marcado al abrir; acá solo cerramos.
     setInternalOpen(false);
     onClose();
   }

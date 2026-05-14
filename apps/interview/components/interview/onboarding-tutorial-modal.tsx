@@ -42,9 +42,15 @@ export function OnboardingTutorialModal({
       if (!seen) {
         setInternalOpen(true);
         setSlide(0);
+        // Marcamos el flag APENAS se abre, no al cerrarse. Así si el
+        // cliente recarga la página, cierra el navegador o se va sin
+        // clickear "Saltar"/"Entendido", igual no vuelve a aparecer
+        // solo. Mantenemos el botón "?" en el header para reabrirlo
+        // manualmente cuando quiera.
+        window.localStorage.setItem(STORAGE_KEY, "1");
       }
     } catch {
-      /* noop */
+      /* localStorage bloqueado — no rompemos el chat */
     }
   }, [autoOpenOnFirstVisit]);
 
@@ -56,11 +62,7 @@ export function OnboardingTutorialModal({
   const isOpen = open ?? internalOpen;
 
   function handleClose() {
-    try {
-      window.localStorage.setItem(STORAGE_KEY, "1");
-    } catch {
-      /* noop */
-    }
+    // El flag ya quedó marcado al abrir; acá solo cerramos.
     setInternalOpen(false);
     onClose();
   }

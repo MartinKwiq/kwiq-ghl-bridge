@@ -434,14 +434,23 @@ Nunca decir "primeros del día", "primeros disponibles" ni inventar horarios. S�
 }
 
 function buildTransferenciaBlock(agent: Required<AgentParams>): string {
-  return `🔁 TRANSFERENCIA A HUMANO
-Activa la acción "Human Handover" cuando ocurra alguno de estos casos:
+  // Importante: el "Human Handover" en GHL Conversation AI es una ACCIÓN
+  // configurada en el bot (Settings → Conversation AI → Actions), NO algo
+  // que se implemente en el prompt. El prompt solo le dice al agente
+  // CUÁNDO disparar esa acción. La configuración del workflow asociado y
+  // sus notificaciones vive en GHL.
+  //
+  // Por eso este bloque es breve: enumera condiciones + la frase. Si la
+  // acción no está habilitada en el bot, la frase queda como copy pero el
+  // handover no ocurre — el admin Kwiq tiene que activarla en GHL.
+  return `🔁 CUÁNDO TRANSFERIR A UNA PERSONA
+Termina tu turno con la frase de transferencia cuando ocurra alguno de estos casos:
 ${agent.punto_corte}
 
-Frase exacta para transferir:
+Frase exacta:
 "${agent.handoff_phrase}"
 
-Después de activar el handover, GHL pausa el bot y avisa al equipo. NO sigas conversando hasta que el equipo retome.`;
+Después de decirla, deja de proponer alternativas y espera a que una persona del equipo continúe la conversación.`;
 }
 
 function buildGuardrailsBlock(agent: Required<AgentParams>): string {
