@@ -46,6 +46,46 @@ export async function POST() {
     return NextResponse.json({ error: "not_interview_user" }, { status: 403 });
   }
 
+  // ────────────────────────────────────────────────────────────
+  // IDEMPOTENCIA: si el cliente ya tiene una sesión activa
+  // (in_progress o paused) para ESTE proyecto, devolvemos esa en lugar
+  // de crear una nueva. Evita duplicados cuando el cliente:
+  //   - clickea "Empezar entrevista" dos veces (doble click).
+  //   - entra desde /e/[slug] y aprieta el botón en /interview.
+  //   - recarga la página y vuelve a clickear.
+  // El front trata la respuesta igual que si fuera sesión nueva — lo
+  // redirige a /entrevista/[token] con el token existente.
+  // ────────────────────────────────────────────────────────────
+  const existingQuery = admin
+    .from("interview_sessions")
+    .select(
+      "id, session_token, schema_version, current_section_id, company_name",
+    )
+    .eq("user_id", auth.user.id)
+    .in("status", ["in_progress", "paused"])
+    .order("updated_at", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(1);
+
+  // Filtro por project_id (puede ser null).
+  const { data: existing } = client.project_id
+    ? await existingQuery.eq("project_id", client.project_id)
+    : await existingQuery.is("project_id", null);
+
+  const existingSession = existing?.[0];
+  if (existingSession) {
+    return NextResponse.json(
+      {
+        token: existingSession.session_token,
+        section_id: existingSession.current_section_id,
+        schema_version: existingSession.schema_version,
+        welcome: null,
+        resumed: true,
+      },
+      { status: 200 },
+    );
+  }
+
   const token = newSessionToken();
   const firstSection = [...INTERVIEW.sections].sort(
     (a, b) => a.order - b.order,
