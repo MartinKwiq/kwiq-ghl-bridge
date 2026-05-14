@@ -107,11 +107,14 @@ export default async function ProjectDetailPage({ params }: Props) {
   if (sessionIds.length) {
     const { data: outs } = await sb
       .from("derived_outputs")
-      .select("kind, content, version, session_id, generated_at")
+      // Columna real en derived_outputs es `created_at` (no `generated_at`).
+      // Aliasamos como `generated_at` en el SELECT para usar el mismo nombre
+      // en los metadata de la UI sin romper nada más.
+      .select("kind, content, version, session_id, generated_at:created_at")
       .in("session_id", sessionIds)
       .in("kind", ["ghl_autoconfig_json", "conversation_ai_prompt"])
       .order("version", { ascending: false })
-      .order("generated_at", { ascending: false });
+      .order("created_at", { ascending: false });
 
     for (const out of outs ?? []) {
       if (out.kind === "ghl_autoconfig_json" && !latestAutoconfig) {

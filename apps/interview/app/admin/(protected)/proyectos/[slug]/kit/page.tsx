@@ -56,11 +56,12 @@ export default async function KitPage({
   if (sessionIds.length) {
     const { data: outs } = await sb
       .from("derived_outputs")
-      .select("content, version, generated_at")
+      // La columna real es created_at; mantenemos el alias por compat.
+      .select("content, version, generated_at:created_at")
       .eq("kind", "ghl_autoconfig_json")
       .in("session_id", sessionIds)
       .order("version", { ascending: false })
-      .order("generated_at", { ascending: false })
+      .order("created_at", { ascending: false })
       .limit(1);
     autoconfig = (outs?.[0]?.content ?? null) as GhlAutoConfig | null;
   }
