@@ -361,6 +361,32 @@ export default async function ProjectDetailPage({ params }: Props) {
         }
       />
 
+      {/* Link al Kit de Configuración Manual (página separada con el copy-paste
+          listo para los recursos que GHL no expone vía API). */}
+      {latestAutoconfig && (
+        <section className="rounded-2xl border border-kwiq-accent/30 bg-kwiq-accent/5 p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 className="font-display text-base font-semibold uppercase tracking-wide text-kwiq-text">
+                Kit de configuración manual
+              </h3>
+              <p className="mt-1 text-xs text-kwiq-muted">
+                Plantillas de email, snippets WhatsApp/SMS, FAQs e
+                instrucciones de workflows generados desde la entrevista.
+                Lo que GHL no permite crear por API queda acá listo para
+                copy-paste.
+              </p>
+            </div>
+            <Link
+              href={`/admin/proyectos/${project.slug}/kit`}
+              className="rounded-lg bg-kwiq-accent px-4 py-2 text-sm font-medium text-kwiq-bg hover:bg-kwiq-accentHover"
+            >
+              Abrir Kit →
+            </Link>
+          </div>
+        </section>
+      )}
+
       <section>
         <div className="mb-3 flex items-baseline justify-between">
           <h2 className="font-display text-lg font-semibold uppercase tracking-wide">
