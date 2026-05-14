@@ -8,6 +8,7 @@ import {
 import { LocationCreatePanel } from "@/components/admin/location-create-panel";
 import { LocationPitCard } from "@/components/admin/location-pit-card";
 import { InventoryPanel } from "@/components/admin/inventory-panel";
+import { GeneratedConfigCard } from "@/components/admin/generated-config-card";
 import { sectionOrder, getSectionById } from "@/lib/interview-schema";
 
 export const dynamic = "force-dynamic";
@@ -77,22 +78,64 @@ export default async function ProjectDetailPage({ params }: Props) {
 
   // Upsells detectados: tomamos el derived_output `ghl_autoconfig_json` más
   // reciente de cualquier sesión del proyecto y leemos `content.upsells`.
+  // De paso, capturamos también el prompt + bundle Conversation AI para
+  // mostrarlos inline en el dashboard del proyecto (sin tener que navegar
+  // a /entrevista/[token]/outputs).
   const sessionIds = (sessions ?? []).map((s) => s.id);
   const upsells: string[] = [];
+  let latestAutoconfig: Record<string, unknown> | null = null;
+  let latestAutoconfigMeta: { sessionId: string; generatedAt: string; version: number } | null =
+    null;
+  let latestPromptBundle: {
+    prompt?: string;
+    response_style?: string;
+    handoff_phrase?: string;
+    custom_values_referenced?: string[];
+    knowledge_base_spec?: unknown;
+    metadata?: {
+      name?: string;
+      language?: string;
+      tone?: string;
+      word_count?: number;
+      character_count?: number;
+      within_ghl_limit?: boolean;
+      blocks?: Array<{ name: string; words: number }>;
+    };
+  } | null = null;
+  let latestPromptMeta: { sessionId: string; generatedAt: string; version: number } | null = null;
+
   if (sessionIds.length) {
     const { data: outs } = await sb
       .from("derived_outputs")
-      .select("content, version, session_id, generated_at")
-      .eq("kind", "ghl_autoconfig_json")
+      .select("kind, content, version, session_id, generated_at")
       .in("session_id", sessionIds)
+      .in("kind", ["ghl_autoconfig_json", "conversation_ai_prompt"])
       .order("version", { ascending: false })
-      .limit(1);
-    const latest = outs?.[0];
-    const list = (latest?.content as { upsells?: unknown } | null)?.upsells;
-    if (Array.isArray(list)) {
-      for (const u of list) {
-        if (typeof u === "string" && !upsells.includes(u)) upsells.push(u);
+      .order("generated_at", { ascending: false });
+
+    for (const out of outs ?? []) {
+      if (out.kind === "ghl_autoconfig_json" && !latestAutoconfig) {
+        latestAutoconfig = (out.content ?? null) as Record<string, unknown> | null;
+        latestAutoconfigMeta = {
+          sessionId: out.session_id as string,
+          generatedAt: out.generated_at as string,
+          version: out.version as number,
+        };
+        const list = (out.content as { upsells?: unknown } | null)?.upsells;
+        if (Array.isArray(list)) {
+          for (const u of list) {
+            if (typeof u === "string" && !upsells.includes(u)) upsells.push(u);
+          }
+        }
+      } else if (out.kind === "conversation_ai_prompt" && !latestPromptBundle) {
+        latestPromptBundle = out.content as typeof latestPromptBundle;
+        latestPromptMeta = {
+          sessionId: out.session_id as string,
+          generatedAt: out.generated_at as string,
+          version: out.version as number,
+        };
       }
+      if (latestAutoconfig && latestPromptBundle) break;
     }
   }
 
@@ -301,6 +344,22 @@ export default async function ProjectDetailPage({ params }: Props) {
           </div>
         </section>
       )}
+
+      <GeneratedConfigCard
+        promptBundle={latestPromptBundle}
+        promptMeta={latestPromptMeta}
+        autoconfig={latestAutoconfig}
+        autoconfigMeta={latestAutoconfigMeta}
+        defaultSessionToken={
+          (sessions ?? []).find((s) => s.id === latestPromptMeta?.sessionId)
+            ?.session_token ??
+          (sessions ?? []).find(
+            (s) => s.id === latestAutoconfigMeta?.sessionId,
+          )?.session_token ??
+          (sessions ?? [])[0]?.session_token ??
+          null
+        }
+      />
 
       <section>
         <div className="mb-3 flex items-baseline justify-between">
