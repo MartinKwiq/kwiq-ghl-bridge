@@ -76,10 +76,14 @@ export default async function InterviewPage({
     notFound();
   }
 
-  // Si la entrevista ya está completada → pantalla de cierre en lugar
-  // del chat. Sirve para que el cliente sepa qué pasa después y no
-  // quede flotando dentro del chat de una sesión terminada.
-  if (session.status === "completed" || session.completed_at) {
+  // Si la entrevista ya está completada → pantalla de cierre SOLO para
+  // el cliente (owner). El admin que entra a auditar sigue viendo el
+  // chat con todos los turnos para poder revisar respuestas, copiar
+  // mensajes o disparar regeneración de outputs desde la barra inferior.
+  if (
+    !isAdmin &&
+    (session.status === "completed" || session.completed_at)
+  ) {
     // Resolvemos el nombre del cliente (si existe en kwiq_interview_users).
     let clientName: string | null = null;
     if (session.user_id) {

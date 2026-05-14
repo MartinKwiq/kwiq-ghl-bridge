@@ -77,23 +77,9 @@ export function InventoryPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>(
-    cachedReport
-      ? {
-          tags: cachedReport.tags.count > 0,
-          custom_values: cachedReport.custom_values.count > 0,
-          custom_fields: cachedReport.custom_fields.count > 0,
-          custom_field_folders:
-            (cachedReport.custom_field_folders?.count ?? 0) > 0,
-          pipelines: cachedReport.pipelines.count > 0,
-          calendars: cachedReport.calendars.count > 0,
-          users: cachedReport.users.count > 0,
-          ai_agents: (cachedReport.ai_agents?.count ?? 0) > 0,
-          email_templates: (cachedReport.email_templates?.count ?? 0) > 0,
-          workflows: (cachedReport.workflows?.count ?? 0) > 0,
-          forms: (cachedReport.forms?.count ?? 0) > 0,
-          surveys: (cachedReport.surveys?.count ?? 0) > 0,
-        }
-      : {},
+    // Por default todas cerradas — el admin abre las que quiera. Antes
+    // se abrían todas las que tenían count > 0 y generaba un scroll largo.
+    {},
   );
 
   const canSync = locationReady && pitLoaded;
@@ -118,22 +104,10 @@ export function InventoryPanel({
         return;
       }
       setReport(body as InventoryReport);
-      // Abrir secciones que tengan algo, así no hay que clickear todas.
-      const r = body as InventoryReport;
-      setOpenSections({
-        tags: r.tags.count > 0,
-        custom_values: r.custom_values.count > 0,
-        custom_fields: r.custom_fields.count > 0,
-        custom_field_folders: (r.custom_field_folders?.count ?? 0) > 0,
-        pipelines: r.pipelines.count > 0,
-        calendars: r.calendars.count > 0,
-        users: r.users.count > 0,
-        ai_agents: (r.ai_agents?.count ?? 0) > 0,
-        email_templates: (r.email_templates?.count ?? 0) > 0,
-        workflows: (r.workflows?.count ?? 0) > 0,
-        forms: (r.forms?.count ?? 0) > 0,
-        surveys: (r.surveys?.count ?? 0) > 0,
-      });
+      // Mantener todas las secciones cerradas después del sync. El admin
+      // las abre manualmente las que quiera revisar — abrir todas hace un
+      // scroll muy largo y satura la pantalla.
+      setOpenSections({});
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error inesperado.");
     } finally {

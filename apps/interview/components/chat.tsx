@@ -313,12 +313,12 @@ export function Chat({
             >
               Pausar
             </button>
-            <Link
-              href={`/entrevista/${token}/outputs`}
-              className="rounded-lg border border-kwiq-border px-3 py-1.5 text-xs hover:bg-kwiq-bg/40"
-            >
-              Ver configuración
-            </Link>
+            {/*
+              "Ver configuración" se sacó del cliente — la página de outputs
+              es admin-only. El cliente no debe tocar nada técnico.
+              El admin puede ver y regenerar outputs desde el dashboard del
+              proyecto en /admin/proyectos/[slug].
+            */}
             <code className="hidden rounded border border-kwiq-border bg-kwiq-bg px-2 py-1 text-xs text-kwiq-muted sm:inline">
               {token.slice(0, 8)}…
             </code>
