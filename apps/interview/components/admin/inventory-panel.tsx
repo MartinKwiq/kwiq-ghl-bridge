@@ -26,6 +26,10 @@ interface InventoryEntry {
   email?: string;
   parentId?: string;
   isActive?: boolean;
+  subject?: string;
+  type?: string;
+  fieldCount?: number;
+  updatedAt?: string;
 }
 
 interface InventorySection {
@@ -47,6 +51,10 @@ interface InventoryReport {
   calendars: InventorySection;
   users: InventorySection;
   ai_agents?: InventorySection;
+  email_templates?: InventorySection;
+  workflows?: InventorySection;
+  forms?: InventorySection;
+  surveys?: InventorySection;
 }
 
 export function InventoryPanel({
@@ -80,6 +88,10 @@ export function InventoryPanel({
           calendars: cachedReport.calendars.count > 0,
           users: cachedReport.users.count > 0,
           ai_agents: (cachedReport.ai_agents?.count ?? 0) > 0,
+          email_templates: (cachedReport.email_templates?.count ?? 0) > 0,
+          workflows: (cachedReport.workflows?.count ?? 0) > 0,
+          forms: (cachedReport.forms?.count ?? 0) > 0,
+          surveys: (cachedReport.surveys?.count ?? 0) > 0,
         }
       : {},
   );
@@ -117,6 +129,10 @@ export function InventoryPanel({
         calendars: r.calendars.count > 0,
         users: r.users.count > 0,
         ai_agents: (r.ai_agents?.count ?? 0) > 0,
+        email_templates: (r.email_templates?.count ?? 0) > 0,
+        workflows: (r.workflows?.count ?? 0) > 0,
+        forms: (r.forms?.count ?? 0) > 0,
+        surveys: (r.surveys?.count ?? 0) > 0,
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error inesperado.");
@@ -381,6 +397,106 @@ export function InventoryPanel({
                   <code className="rounded bg-kwiq-bg/60 px-1.5 py-0.5 font-mono text-[11px] text-kwiq-muted">
                     {item.id}
                   </code>
+                </div>
+              )}
+            />
+          )}
+
+          {report.email_templates && (
+            <Section
+              label="Plantillas de email (pre-creadas por snapshot)"
+              kind="email_templates"
+              section={report.email_templates}
+              open={openSections.email_templates ?? false}
+              onToggle={() =>
+                setOpenSections((s) => ({
+                  ...s,
+                  email_templates: !s.email_templates,
+                }))
+              }
+              renderItem={(item) => (
+                <div className="flex flex-col gap-1">
+                  <span className="text-kwiq-text">{item.name ?? "—"}</span>
+                  {item.subject && (
+                    <span className="text-xs text-kwiq-muted">
+                      Asunto: {item.subject}
+                    </span>
+                  )}
+                </div>
+              )}
+            />
+          )}
+
+          {report.workflows && (
+            <Section
+              label="Workflows / Automatizaciones (LIST-only, no se crean via API)"
+              kind="workflows"
+              section={report.workflows}
+              open={openSections.workflows ?? false}
+              onToggle={() =>
+                setOpenSections((s) => ({
+                  ...s,
+                  workflows: !s.workflows,
+                }))
+              }
+              renderItem={(item) => (
+                <div className="flex flex-wrap items-baseline gap-2">
+                  <span className="text-kwiq-text">{item.name ?? "—"}</span>
+                  {item.isActive ? (
+                    <span className="rounded-full border border-kwiq-ok/40 bg-kwiq-ok/10 px-2 py-0.5 text-[10px] uppercase tracking-widest text-kwiq-ok">
+                      Activo
+                    </span>
+                  ) : (
+                    item.type && (
+                      <span className="rounded-full border border-kwiq-border bg-kwiq-bg/40 px-2 py-0.5 text-[10px] uppercase tracking-widest text-kwiq-muted">
+                        {item.type}
+                      </span>
+                    )
+                  )}
+                </div>
+              )}
+            />
+          )}
+
+          {report.forms && (
+            <Section
+              label="Formularios"
+              kind="forms"
+              section={report.forms}
+              open={openSections.forms ?? false}
+              onToggle={() =>
+                setOpenSections((s) => ({ ...s, forms: !s.forms }))
+              }
+              renderItem={(item) => (
+                <div className="flex flex-wrap items-baseline gap-2">
+                  <span className="text-kwiq-text">{item.name ?? "—"}</span>
+                  {typeof item.fieldCount === "number" && (
+                    <span className="text-xs text-kwiq-muted">
+                      {item.fieldCount} campos
+                    </span>
+                  )}
+                </div>
+              )}
+            />
+          )}
+
+          {report.surveys && (
+            <Section
+              label="Encuestas"
+              kind="surveys"
+              section={report.surveys}
+              open={openSections.surveys ?? false}
+              onToggle={() =>
+                setOpenSections((s) => ({ ...s, surveys: !s.surveys }))
+              }
+              renderItem={(item) => (
+                <div className="flex flex-wrap items-baseline gap-2">
+                  <span className="text-kwiq-text">{item.name ?? "—"}</span>
+                  {typeof item.fieldCount === "number" && (
+                    <span className="text-xs text-kwiq-muted">
+                      {item.fieldCount} preguntas
+                    </span>
+                  )}
                 </div>
               )}
             />

@@ -39,8 +39,16 @@ interface InventoryEntry {
   email?: string;
   /** Para custom_fields: id del folder al que pertenece (si está en uno). */
   parentId?: string;
-  /** Para ai_agents: si el agente está activo. */
+  /** Para ai_agents y workflows: si el recurso está activo. */
   isActive?: boolean;
+  /** Para email_templates: asunto. */
+  subject?: string;
+  /** Para workflows / triggers: tipo o categoría. */
+  type?: string;
+  /** Para forms / surveys: cantidad de campos/preguntas. */
+  fieldCount?: number;
+  /** Última fecha de modificación según GHL. */
+  updatedAt?: string;
   raw?: Record<string, unknown>;
 }
 
@@ -69,6 +77,16 @@ interface InventoryReport {
    *  (puede devolver 404 según el plan); por eso lleva `fetched: false`
    *  con error en lugar de romper si no responde. */
   ai_agents: InventorySection;
+  /** Plantillas de email cargadas por snapshot o creadas a mano.
+   *  Endpoint: GET /emails/templates?locationId=... */
+  email_templates?: InventorySection;
+  /** Workflows / automatizaciones. La API solo lista, no crea workflows
+   *  completos (limitación de GHL). Endpoint: GET /workflows/?locationId */
+  workflows?: InventorySection;
+  /** Formularios. Endpoint: GET /forms/?locationId */
+  forms?: InventorySection;
+  /** Encuestas. Endpoint: GET /surveys/?locationId */
+  surveys?: InventorySection;
 }
 
 export async function GET(_req: Request, { params }: RouteParams) {
@@ -128,6 +146,10 @@ export async function GET(_req: Request, { params }: RouteParams) {
     calendars,
     users,
     aiAgents,
+    emailTemplates,
+    workflows,
+    forms,
+    surveys,
   ] = await Promise.all([
     fetchTags(ctx),
     fetchCustomValues(ctx),
@@ -137,6 +159,10 @@ export async function GET(_req: Request, { params }: RouteParams) {
     fetchCalendars(ctx),
     fetchUsers(ctx),
     fetchAIAgents(ctx),
+    fetchEmailTemplates(ctx),
+    fetchWorkflows(ctx),
+    fetchForms(ctx),
+    fetchSurveys(ctx),
   ]);
 
   const report: InventoryReport = {
@@ -151,6 +177,10 @@ export async function GET(_req: Request, { params }: RouteParams) {
     calendars,
     users,
     ai_agents: aiAgents,
+    email_templates: emailTemplates,
+    workflows,
+    forms,
+    surveys,
   };
 
   // Persistir el snapshot para que el provisioner pueda razonar sobre él
@@ -449,4 +479,216 @@ async function fetchAIAgents(ctx: {
     isActive: b.isActive,
   }));
   return { count: items.length, items, fetched: true };
+}
+
+/**
+ * Lista las plantillas de email creadas en la sub-cuenta (el snapshot
+ * típicamente trae varias pre-cargadas).
+ * Endpoint: GET /emails/templates?locationId=...
+ */
+async function fetchEmailTemplates(ctx: {
+  pit: string;
+  location_id: string;
+  company_id: string;
+}): Promise<InventorySection> {
+  const res = await locationFetch<{
+    templates?: Array<{
+      id: string;
+      name?: string;
+      title?: string;
+      subject?: string;
+      dateAdded?: string;
+      updatedAt?: string;
+    }>;
+    data?: Array<{
+      id: string;
+      name?: string;
+      title?: string;
+      subject?: string;
+      dateAdded?: string;
+      updatedAt?: string;
+    }>;
+  }>(
+    ctx,
+    `/emails/templates?locationId=${encodeURIComponent(ctx.location_id)}`,
+    { scope_location: true },
+  );
+
+  if (res.ok) {
+    const arr = res.data?.templates ?? res.data?.data ?? [];
+    const items = arr.map((t) => ({
+      id: t.id,
+      name: t.name ?? t.title,
+      subject: t.subject,
+      updatedAt: t.updatedAt ?? t.dateAdded,
+    }));
+    return { count: items.length, items, fetched: true };
+  }
+
+  // Fallback graceful — algunas sub-cuentas no exponen la API de email
+  // templates. Marcamos como vacío en lugar de error rojo.
+  if (res.status === 400 || res.status === 404 || res.status === 405) {
+    return { count: 0, items: [], fetched: true };
+  }
+  return {
+    count: 0,
+    items: [],
+    fetched: false,
+    error: `${res.status}: ${res.message}`,
+  };
+}
+
+/**
+ * Lista los workflows / automatizaciones de la sub-cuenta. GHL permite
+ * LISTAR vía API, pero NO crear workflows completos — esos vienen del
+ * snapshot o se editan en la UI de GHL.
+ * Endpoint: GET /workflows/?locationId=...
+ */
+async function fetchWorkflows(ctx: {
+  pit: string;
+  location_id: string;
+  company_id: string;
+}): Promise<InventorySection> {
+  const res = await locationFetch<{
+    workflows?: Array<{
+      id: string;
+      name?: string;
+      status?: string;
+      version?: number;
+      updatedAt?: string;
+    }>;
+    data?: Array<{
+      id: string;
+      name?: string;
+      status?: string;
+      version?: number;
+      updatedAt?: string;
+    }>;
+  }>(
+    ctx,
+    `/workflows/?locationId=${encodeURIComponent(ctx.location_id)}`,
+    { scope_location: true },
+  );
+
+  if (res.ok) {
+    const arr = res.data?.workflows ?? res.data?.data ?? [];
+    const items = arr.map((w) => ({
+      id: w.id,
+      name: w.name,
+      type: w.status,
+      isActive: w.status === "published" || w.status === "active",
+      updatedAt: w.updatedAt,
+    }));
+    return { count: items.length, items, fetched: true };
+  }
+
+  if (res.status === 400 || res.status === 404 || res.status === 405) {
+    return { count: 0, items: [], fetched: true };
+  }
+  return {
+    count: 0,
+    items: [],
+    fetched: false,
+    error: `${res.status}: ${res.message}`,
+  };
+}
+
+/**
+ * Lista los formularios públicos de la sub-cuenta.
+ * Endpoint: GET /forms/?locationId=...
+ */
+async function fetchForms(ctx: {
+  pit: string;
+  location_id: string;
+  company_id: string;
+}): Promise<InventorySection> {
+  const res = await locationFetch<{
+    forms?: Array<{
+      id: string;
+      name?: string;
+      fields?: unknown[];
+      updatedAt?: string;
+    }>;
+    data?: Array<{
+      id: string;
+      name?: string;
+      fields?: unknown[];
+      updatedAt?: string;
+    }>;
+  }>(
+    ctx,
+    `/forms/?locationId=${encodeURIComponent(ctx.location_id)}`,
+    { scope_location: true },
+  );
+
+  if (res.ok) {
+    const arr = res.data?.forms ?? res.data?.data ?? [];
+    const items = arr.map((f) => ({
+      id: f.id,
+      name: f.name,
+      fieldCount: Array.isArray(f.fields) ? f.fields.length : undefined,
+      updatedAt: f.updatedAt,
+    }));
+    return { count: items.length, items, fetched: true };
+  }
+
+  if (res.status === 400 || res.status === 404 || res.status === 405) {
+    return { count: 0, items: [], fetched: true };
+  }
+  return {
+    count: 0,
+    items: [],
+    fetched: false,
+    error: `${res.status}: ${res.message}`,
+  };
+}
+
+/**
+ * Lista las encuestas de la sub-cuenta.
+ * Endpoint: GET /surveys/?locationId=...
+ */
+async function fetchSurveys(ctx: {
+  pit: string;
+  location_id: string;
+  company_id: string;
+}): Promise<InventorySection> {
+  const res = await locationFetch<{
+    surveys?: Array<{
+      id: string;
+      name?: string;
+      questions?: unknown[];
+      updatedAt?: string;
+    }>;
+    data?: Array<{
+      id: string;
+      name?: string;
+      questions?: unknown[];
+      updatedAt?: string;
+    }>;
+  }>(
+    ctx,
+    `/surveys/?locationId=${encodeURIComponent(ctx.location_id)}`,
+    { scope_location: true },
+  );
+
+  if (res.ok) {
+    const arr = res.data?.surveys ?? res.data?.data ?? [];
+    const items = arr.map((s) => ({
+      id: s.id,
+      name: s.name,
+      fieldCount: Array.isArray(s.questions) ? s.questions.length : undefined,
+      updatedAt: s.updatedAt,
+    }));
+    return { count: items.length, items, fetched: true };
+  }
+
+  if (res.status === 400 || res.status === 404 || res.status === 405) {
+    return { count: 0, items: [], fetched: true };
+  }
+  return {
+    count: 0,
+    items: [],
+    fetched: false,
+    error: `${res.status}: ${res.message}`,
+  };
 }

@@ -26,8 +26,16 @@ export interface InventoryEntry {
   email?: string;
   /** Id del folder al que pertenece (para custom_fields). */
   parentId?: string;
-  /** Si el agente IA está activo (para ai_agents). */
+  /** Si el recurso está activo (ai_agents, workflows). */
   isActive?: boolean;
+  /** Asunto del email template. */
+  subject?: string;
+  /** Tipo/categoría (para workflows: status). */
+  type?: string;
+  /** Cantidad de campos (forms) o preguntas (surveys). */
+  fieldCount?: number;
+  /** Última fecha de modificación según GHL. */
+  updatedAt?: string;
 }
 
 export interface InventorySection {
@@ -51,6 +59,14 @@ export interface InventoryReport {
   users: InventorySection;
   /** Agentes Conversation AI (pre-creados por snapshot). */
   ai_agents?: InventorySection;
+  /** Plantillas de email (pre-creadas por snapshot). */
+  email_templates?: InventorySection;
+  /** Workflows / automatizaciones (LIST-only, no se pueden crear via API). */
+  workflows?: InventorySection;
+  /** Formularios públicos. */
+  forms?: InventorySection;
+  /** Encuestas. */
+  surveys?: InventorySection;
 }
 
 /** Inventario considerado vencido si tiene más de N horas. */
