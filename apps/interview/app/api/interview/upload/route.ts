@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { randomUUID } from "node:crypto";
-import { supabaseAdmin } from "@/lib/supabase/server";
+import { supabaseAdmin, supabaseServer } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -233,4 +233,141 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({ asset }, { status: 200 });
+}
+
+/**
+ * GET /api/interview/upload?token=<session_token>
+ *
+ * Lista los archivos de branding que ya están subidos para una sesión.
+ * El BrandingUploader llama acá al montar para hidratar el estado
+ * — así si el cliente recarga, pausa o vuelve después, sigue viendo
+ * los archivos que ya cargó.
+ *
+ * Requiere sesión autenticada. Verifica que el caller sea owner de la
+ * sesión o admin Kwiq. Sin sesión devuelve 401; sin permiso 403.
+ */
+export async function GET(req: NextRequest) {
+  const token = req.nextUrl.searchParams.get("token");
+  if (!token || typeof token !== "string" || token.length < 8) {
+    return NextResponse.json({ error: "invalid_token" }, { status: 400 });
+  }
+
+  const sb = await supabaseServer();
+  const { data: auth } = await sb.auth.getUser();
+  if (!auth?.user) {
+    return NextResponse.json({ error: "not_authenticated" }, { status: 401 });
+  }
+
+  const admin = supabaseAdmin();
+  const { data: session } = await admin
+    .from("interview_sessions")
+    .select("id, project_id, user_id")
+    .eq("session_token", token)
+    .maybeSingle();
+  if (!session) {
+    return NextResponse.json({ error: "session_not_found" }, { status: 404 });
+  }
+
+  // Owner check con bypass para admins Kwiq.
+  const isOwner = session.user_id === auth.user.id;
+  if (!isOwner) {
+    const { data: adminRow } = await admin
+      .from("kwiq_admins")
+      .select("user_id")
+      .eq("user_id", auth.user.id)
+      .maybeSingle();
+    if (!adminRow) {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
+  }
+
+  const { data: assets } = await admin
+    .from("branding_assets")
+    .select("id, kind, file_path, mime_type, original_name, size_bytes, uploaded_at")
+    .eq("session_id", session.id)
+    .order("uploaded_at", { ascending: true });
+
+  return NextResponse.json({ assets: assets ?? [] }, { status: 200 });
+}
+
+/**
+ * DELETE /api/interview/upload?token=<token>&assetId=<uuid>
+ *
+ * Borra un archivo de branding: del bucket Storage + del row en
+ * branding_assets. Usado por el botón "X" del BrandingUploader.
+ *
+ * Requiere autenticación. Solo el owner de la sesión o un admin Kwiq
+ * puede borrar. Si el row del asset no pertenece a la sesión del
+ * token, devuelve 403.
+ *
+ * NO toca interview_turns — los mensajes "Recibí tu archivo" quedan
+ * en el historial como contexto. Es decisión consciente: borrar el
+ * mensaje del bot causaría confusión sobre qué pasó. Si el cliente
+ * sube otro archivo del mismo tipo, se persiste un nuevo turn.
+ */
+export async function DELETE(req: NextRequest) {
+  const token = req.nextUrl.searchParams.get("token");
+  const assetId = req.nextUrl.searchParams.get("assetId");
+  if (!token || token.length < 8) {
+    return NextResponse.json({ error: "invalid_token" }, { status: 400 });
+  }
+  if (!assetId || assetId.length < 16) {
+    return NextResponse.json({ error: "invalid_asset_id" }, { status: 400 });
+  }
+
+  const sb = await supabaseServer();
+  const { data: auth } = await sb.auth.getUser();
+  if (!auth?.user) {
+    return NextResponse.json({ error: "not_authenticated" }, { status: 401 });
+  }
+
+  const admin = supabaseAdmin();
+  const { data: session } = await admin
+    .from("interview_sessions")
+    .select("id, user_id")
+    .eq("session_token", token)
+    .maybeSingle();
+  if (!session) {
+    return NextResponse.json({ error: "session_not_found" }, { status: 404 });
+  }
+
+  const isOwner = session.user_id === auth.user.id;
+  if (!isOwner) {
+    const { data: adminRow } = await admin
+      .from("kwiq_admins")
+      .select("user_id")
+      .eq("user_id", auth.user.id)
+      .maybeSingle();
+    if (!adminRow) {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
+  }
+
+  // Verificar que el asset pertenezca a esta sesión.
+  const { data: asset } = await admin
+    .from("branding_assets")
+    .select("id, session_id, file_path")
+    .eq("id", assetId)
+    .maybeSingle();
+  if (!asset) {
+    return NextResponse.json({ error: "asset_not_found" }, { status: 404 });
+  }
+  if (asset.session_id !== session.id) {
+    return NextResponse.json({ error: "asset_not_in_session" }, { status: 403 });
+  }
+
+  // Borrar del bucket (best effort) y del row.
+  await admin.storage.from("branding").remove([asset.file_path]).catch(() => {});
+  const { error: delErr } = await admin
+    .from("branding_assets")
+    .delete()
+    .eq("id", assetId);
+  if (delErr) {
+    return NextResponse.json(
+      { error: "delete_failed", details: delErr.message },
+      { status: 500 },
+    );
+  }
+
+  return NextResponse.json({ ok: true }, { status: 200 });
 }
