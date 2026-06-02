@@ -178,5 +178,59 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // 4) Persistir un turn assistant que confirme la recepción del archivo.
+  //
+  //    Antes el UI generaba un mensaje "Recibí tu archivo de X" como bubble
+  //    pero NO se persistía en interview_turns. Resultado: cuando el cliente
+  //    luego escribía algo, /api/chat reconstruía el history desde DB sin
+  //    esos mensajes y procesaba con contexto inconsistente. Además, si el
+  //    cliente recargaba la página, los mensajes de upload desaparecían.
+  //
+  //    Ahora cada upload exitoso queda como un turn real (role: assistant,
+  //    section_id: branding) con el mismo copy que el UI venía mostrando.
+  //    Esto mantiene el history coherente con lo que ve el cliente y
+  //    permite que el chat siga procesando bien aunque haya múltiples
+  //    archivos en juego.
+  //
+  //    Cálculo del turn_index: MAX + 1 igual que en interview-engine.ts.
+  //    No bloqueamos el response del upload si falla esta persistencia —
+  //    el archivo ya quedó guardado.
+  try {
+    const kindLabel =
+      kind === "logo"
+        ? "logo"
+        : kind === "palette"
+          ? "paleta"
+          : kind === "font"
+            ? "tipografía"
+            : kind === "brandbook"
+              ? "brandbook"
+              : "archivo";
+    const { data: maxTurnRow } = await sb
+      .from("interview_turns")
+      .select("turn_index")
+      .eq("session_id", session.id)
+      .order("turn_index", { ascending: false })
+      .limit(1);
+    const nextTurnIndex = ((maxTurnRow?.[0]?.turn_index as number | undefined) ?? -1) + 1;
+    await sb.from("interview_turns").insert({
+      session_id: session.id,
+      turn_index: nextTurnIndex,
+      role: "assistant",
+      content: `Recibí tu archivo de ${kindLabel}: ${originalName}. Lo guardé en el proyecto — seguimos.`,
+      section_id: "branding",
+      meta: {
+        status: "in_progress",
+        asset_id: assetId,
+        asset_kind: kind,
+        from_upload: true,
+      },
+    });
+  } catch (err) {
+    // No abortamos el upload por esto — solo dejamos rastro.
+    // eslint-disable-next-line no-console
+    console.error("[/api/interview/upload] failed to persist confirmation turn:", err);
+  }
+
   return NextResponse.json({ asset }, { status: 200 });
 }
